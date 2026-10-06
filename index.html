@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; frame-src 'self' about: blob:; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Invoice Maker</title>
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><img src="assets/icon.svg" alt="" width="24" height="24">Invoice Maker</div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="create">Create</button>
+    <button class="tab" data-tab="queue">Queue <b class="badge" id="queueCount">0</b></button>
+    <button class="tab" data-tab="subs">Subcontractors</button>
+    <button class="tab" data-tab="timesheet">Timesheet</button>
+    <button class="tab" data-tab="dash">Dashboard</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </nav>
+  <button class="as-badge" id="autosaveBadge" hidden data-gosettings></button>
+  <button class="btn small ghost lock-btn" id="lockBtn" title="Lock now">Lock</button>
+</header>
+
+<!-- ============ CREATE ============ -->
+<main class="view layout" data-view="create">
+  <section class="left">
+    <nav class="steps">
+      <button class="step active" data-step="details"><span>1</span>Details</button>
+      <button class="step" data-step="finish"><span>2</span>Review &amp; queue</button>
+    </nav>
+
+    <div class="panel" data-panel="details">
+      <div class="mode-tabs">
+        <button class="mode active" data-mode="paste">Quick paste</button>
+        <button class="mode" data-mode="form">Form</button>
+        <button class="btn small" id="startWizard">Step-by-step</button>
+      </div>
+
+      <div class="mode-body" data-modebody="paste">
+        <p class="hint">Paste anything: name, address, bank details, rate, days and site codes. Saved subcontractors fill in automatically.</p>
+        <textarea id="pasteBox" rows="11" placeholder="For the week of September 28, 2026:
+
+John Smith
+4 x 12AB (Monday 28/09/26, Tuesday 29/09/26, Thursday 01/10/26, Friday 02/10/26)
+
+Anna Kowal
+1 x 5CD (Wednesday 30/09/26)
+1 x 12AB (Friday 02/10/26)"></textarea>
+        <div class="row gap">
+          <button class="btn primary" id="extractBtn">Extract details</button>
+          <button class="btn ghost" id="clearPaste">Clear</button>
+          <span class="muted small">Ctrl + Enter</span>
+        </div>
+        <div id="extractResult" class="extract-result" hidden></div>
+      </div>
+
+      <div class="mode-body" data-modebody="form" hidden>
+        <fieldset>
+          <legend>Subcontractor <small>(invoice from)</small></legend>
+          <label>Saved subcontractor<select id="subSelect"></select></label>
+          <label>Name<input data-k="from.name" list="dl-subs" autocomplete="off"></label>
+          <label>Address<textarea data-k="from.addr" rows="3"></textarea></label>
+          <div class="grid3">
+            <label>Account name<input data-k="from.accName"></label>
+            <label>Account number<input data-k="from.accNo" inputmode="numeric"></label>
+            <label>Sort code<input data-k="from.sort" placeholder="00-00-00"></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Bill to</legend>
+          <label>Saved client<select id="clientSelect"></select></label>
+          <label>Company name<input data-k="to.name"></label>
+          <label>Address<textarea data-k="to.addr" rows="4"></textarea></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Invoice</legend>
+          <div class="grid3">
+            <label>Reference number<input data-k="number"></label>
+            <label>Invoice date<input type="date" data-k="date"></label>
+            <label>Due date<input type="date" data-k="due"></label>
+          </div>
+          <div class="grid3">
+            <label>VAT (all lines)<select id="vatAll" class="vat-options"></select></label>
+          </div>
+          <div class="grid3 paid-row">
+            <label class="check"><input type="checkbox" data-k="paid"> Already paid</label>
+            <label>Paid on<input type="date" data-k="paidDate"></label>
+          </div>
+          <label class="check"><input type="checkbox" data-k="notTax"> Show “This is not a tax invoice”</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Work</legend>
+          <div class="builder">
+            <div class="weeknav">
+              <button type="button" class="btn small ghost" id="wkPrev" aria-label="Previous week">‹</button>
+              <div class="wk-label"><b id="wkTitle"></b><small id="wkSub"></small></div>
+              <button type="button" class="btn small ghost" id="wkNext" aria-label="Next week">›</button>
+              <button type="button" class="btn small ghost" id="wkThis">This week</button>
+            </div>
+            <div class="days" id="dayPicks"></div>
+            <div class="grid3">
+              <label>Site code<input data-k="site" list="dl-sites" autocomplete="off"></label>
+              <label>Day rate £<input type="number" step="0.01" data-k="rate" list="dl-rates"></label>
+              <label>Label<input data-k="label" placeholder="Labour"></label>
+            </div>
+            <div class="row gap">
+              <button class="btn" id="addDays">Add selected days</button>
+              <button class="btn ghost" id="addLine">Add blank line</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="items">
+              <thead><tr><th>Date</th><th>Site</th><th>Label</th><th>Qty</th><th>Price</th><th>VAT</th><th class="r">Amount</th><th></th></tr></thead>
+              <tbody id="itemsBody"></tbody>
+            </table>
+          </div>
+          <div class="totals-line" id="formTotal"></div>
+        </fieldset>
+      </div>
+
+      <div class="actions">
+        <button class="btn ghost" id="newInvoice">New blank</button>
+        <button class="btn primary" data-gostep="finish">Next: review →</button>
+      </div>
+    </div>
+
+    <div class="panel" data-panel="finish" hidden>
+      <h2>Check and add</h2>
+      <div id="checkList" class="check-list"></div>
+      <div class="actions">
+        <button class="btn ghost" data-gostep="details">← Back</button>
+        <button class="btn" id="downloadCurrent">Download now</button>
+        <button class="btn primary" id="addToQueue">Add to queue</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="right">
+    <div class="preview-head"><span class="muted small" id="previewLabel">Live preview</span></div>
+    <div class="preview" id="preview"><div class="page-scale" id="pageScale"></div></div>
+  </section>
+</main>
+
+<!-- ============ QUEUE ============ -->
+<main class="view narrow" data-view="queue" hidden>
+  <div class="panel">
+    <div class="queue-bar">
+      <h2>Queue</h2>
+      <div class="row gap">
+        <div class="seg" id="qStatus">
+          <button data-v="all">All</button>
+          <button data-v="unpaid">Unpaid</button>
+          <button data-v="paid">Paid</button>
+        </div>
+        <label class="check"><input type="checkbox" id="showArchived"> Show archived</label>
+        <label class="check"><input type="checkbox" id="selectAll"> Select all</label>
+        <div class="seg" id="dlMode">
+          <button data-v="separate">Separate PDFs</button>
+          <button data-v="zip">One ZIP</button>
+        </div>
+      </div>
+    </div>
+    <ul class="queue" id="queueList"></ul>
+    <p class="muted empty" id="queueEmpty">No invoices yet. Make one in Create.</p>
+    <div class="actions">
+      <button class="btn ghost" id="archiveDone">Archive downloaded</button>
+      <button class="btn danger ghost" id="delSel">Delete selected</button>
+      <button class="btn" id="markSelPaid">Mark selected paid</button>
+      <button class="btn primary" id="downloadBtn">Download selected</button>
+    </div>
+  </div>
+</main>
+
+<!-- ============ SUBCONTRACTORS ============ -->
+<main class="view narrow" data-view="subs" hidden>
+  <div class="panel">
+    <div class="queue-bar">
+      <h2>Subcontractors</h2>
+      <div class="row gap">
+        <input type="search" id="subSearch" placeholder="Search">
+        <button class="btn primary" id="addSub">+ New subcontractor</button>
+      </div>
+    </div>
+    <div class="quick-add">
+      <label for="subPaste">Quick add from text</label>
+      <textarea id="subPaste" rows="5" placeholder="Paste one or more subcontractors: name, address, account number, sort code, rate, phone, email. Leave a blank line between people."></textarea>
+      <div class="row gap">
+        <button class="btn primary" id="subExtract">Extract subcontractors</button>
+        <button class="btn ghost" id="subPasteClear">Clear</button>
+      </div>
+      <div id="subExtractResult" class="extract-result" hidden></div>
+    </div>
+    <div id="subList" class="card-list"></div>
+  </div>
+</main>
+
+<!-- ============ DASHBOARD ============ -->
+<main class="view wide-view" data-view="timesheet" hidden>
+  <div class="panel">
+    <div class="cal-head">
+      <h3>Week</h3>
+      <div class="weeknav ts-nav">
+        <button type="button" class="btn small ghost" id="tsPrev" aria-label="Previous week">‹</button>
+        <div class="wk-label"><b id="tsTitle"></b></div>
+        <button type="button" class="btn small ghost" id="tsNext" aria-label="Next week">›</button>
+        <button type="button" class="btn small ghost" id="tsThis">This week</button>
+      </div>
+    </div>
+    <p class="hint">Who worked which day, and at which property. Hover a code to see its invoice.</p>
+    <div class="table-wrap"><table class="data ts-grid" id="tsWeek"></table></div>
+  </div>
+  <div class="panel" style="margin-top:16px">
+    <div class="cal-head">
+      <h3>Days per subcontractor</h3>
+      <label class="ts-period">Period<select id="tsPeriod">
+        <option value="all">All time</option>
+        <option value="4w">Last 4 weeks</option>
+        <option value="month">This month</option>
+        <option value="lastmonth">Last month</option>
+        <option value="year">This year</option>
+      </select></label>
+    </div>
+    <p class="hint">Total days worked, split by property.</p>
+    <div class="table-wrap"><table class="data ts-totals" id="tsTotals"></table></div>
+  </div>
+</main>
+
+<main class="view wide-view" data-view="dash" hidden>
+  <div class="filters panel">
+    <label>Period<select id="fPeriod">
+      <option value="all">All time</option>
+      <option value="month">This month</option>
+      <option value="lastmonth">Last month</option>
+      <option value="3m">Last 3 months</option>
+      <option value="year">This year</option>
+      <option value="custom">Custom</option>
+    </select></label>
+    <label class="f-custom">From<input type="date" id="fFrom"></label>
+    <label class="f-custom">To<input type="date" id="fTo"></label>
+    <label>Subcontractor<select id="fSub"></select></label>
+    <label>Property / site<select id="fSite"></select></label>
+    <label>Payment<select id="fStatus"><option value="">Paid and unpaid</option><option value="unpaid">Unpaid only</option><option value="paid">Paid only</option></select></label>
+    <button class="btn ghost" id="exportCsv">Export CSV</button>
+    <button class="btn primary" id="exportAll">Setup file</button>
+  </div>
+  <div class="kpis" id="kpis"></div>
+  <div class="dash-grid">
+    <div class="panel span2" id="payPanel">
+      <div class="cal-head"><h3>Waiting to be paid</h3><span class="muted small" id="payCount"></span></div>
+      <div id="owedBySub" class="owed-chips"></div>
+      <div class="table-wrap"><table class="data" id="payTable"></table></div>
+    </div>
+    <div class="panel span2"><h3>Totals per week</h3><div id="chWeek" class="vbars"></div></div>
+    <div class="panel"><h3>Per subcontractor</h3><div id="chSub" class="hbars"></div></div>
+    <div class="panel"><h3>Per property / site</h3><div id="chSite" class="hbars"></div></div>
+    <div class="panel span2">
+      <div class="cal-head"><h3 id="calTitle">Calendar</h3>
+        <div class="row gap"><button class="btn small ghost" id="calPrev">‹</button><button class="btn small ghost" id="calToday">Today</button><button class="btn small ghost" id="calNext">›</button></div>
+      </div>
+      <div id="calendar" class="calendar"></div>
+      <div id="calDay" class="cal-day"></div>
+    </div>
+    <div class="panel span2">
+      <div class="cal-head"><h3>Line detail</h3><span class="muted small" id="lineCount"></span></div>
+      <div class="table-wrap"><table class="data" id="lineTable"></table></div>
+    </div>
+  </div>
+</main>
+
+<!-- ============ SETTINGS ============ -->
+<main class="view narrow" data-view="settings" hidden>
+  <div class="panel">
+    <div class="mode-tabs" id="setTabs">
+      <button class="mode active" data-set="clients">Clients</button>
+      <button class="mode" data-set="sites">Properties / sites</button>
+      <button class="mode" data-set="rates">Rates</button>
+      <button class="mode" data-set="general">Numbering &amp; VAT</button>
+      <button class="mode" data-set="security">Password</button>
+      <button class="mode" data-set="backup">Backup</button>
+    </div>
+    <div id="setBody"></div>
+  </div>
+</main>
+
+<datalist id="dl-subs"></datalist>
+<datalist id="dl-sites"></datalist>
+<datalist id="dl-rates"></datalist>
+
+<!-- Step-by-step wizard -->
+<dialog id="wizard" class="modal">
+  <form method="dialog" id="wizForm">
+    <div class="wiz-progress"><div id="wizBar"></div></div>
+    <p class="muted small" id="wizCount"></p>
+    <h3 id="wizLabel"></h3>
+    <div id="wizField"></div>
+    <div class="actions">
+      <button type="button" class="btn ghost" id="wizBack">Back</button>
+      <button type="button" class="btn ghost" id="wizSkip">Skip</button>
+      <button type="submit" class="btn primary" id="wizNext">Next</button>
+    </div>
+    <button type="button" class="close" id="wizClose" aria-label="Close">×</button>
+  </form>
+</dialog>
+
+<!-- Subcontractor editor -->
+<dialog id="subDialog" class="modal">
+  <form method="dialog" id="subForm">
+    <h3 id="subDialogTitle">Subcontractor</h3>
+    <details class="paste-fill">
+      <summary>Paste details to fill this form</summary>
+      <textarea id="subDlgPaste" rows="4" placeholder="Name, address, account number, sort code, rate, phone, email"></textarea>
+      <button type="button" class="btn small" id="subDlgFill">Fill form</button>
+    </details>
+    <label>Name<input name="name" required></label>
+    <label>Address<textarea name="addr" rows="3"></textarea></label>
+    <div class="grid3">
+      <label>Account name<input name="accName"></label>
+      <label>Account number<input name="accNo" inputmode="numeric"></label>
+      <label>Sort code<input name="sort" placeholder="00-00-00"></label>
+    </div>
+    <div class="grid3">
+      <label>Base day rate £<input name="rate" type="number" step="0.01"></label>
+      <label>VAT<select name="vat" class="vat-options"></select></label>
+      <label>Also known as<input name="aliases" placeholder="e.g. Smith Building"></label>
+    </div>
+    <div class="grid3">
+      <label>Phone<input name="phone"></label>
+      <label>Email<input name="email" type="email"></label>
+    </div>
+    <label>Notes<textarea name="notes" rows="2"></textarea></label>
+    <div class="actions">
+      <button type="button" class="btn danger ghost" id="subDelete">Delete</button>
+      <button type="button" class="btn ghost" id="subCancel">Cancel</button>
+      <button type="submit" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="askDialog" class="modal">
+  <form method="dialog">
+    <p id="askText" style="margin:0 0 4px;font-size:15px;color:var(--ink)"></p>
+    <div class="actions">
+      <button type="button" class="btn ghost" data-close="cancel">Cancel</button>
+      <button class="btn primary" value="ok" id="askOk" autofocus>OK</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="pwDialog" class="modal">
+  <form method="dialog">
+    <p id="pwText" style="margin:0 0 10px;color:var(--ink)"></p>
+    <input type="password" id="pwInput" autocomplete="off" style="width:100%">
+    <div class="actions">
+      <button type="button" class="btn ghost" data-close="cancel">Cancel</button>
+      <button class="btn primary" value="ok">Import</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="exportDialog" class="modal wide">
+  <form method="dialog" id="exportForm" autocomplete="off">
+    <h3>Setup file</h3>
+    <p class="hint">A setup file holds all contacts, properties, invoice records and settings, encrypted with a password.</p>
+    <div class="xp-grid">
+      <section class="xp-card">
+        <h4>Export setup</h4>
+        <ul class="xp-list" id="xpCount"></ul>
+        <div class="opt-list">
+          <label><input type="radio" name="xp" value="mine" checked> Use my current password</label>
+          <label><input type="radio" name="xp" value="other"> Use a different password</label>
+        </div>
+        <div id="xpOther" class="grid2" hidden>
+          <label>File password<input type="password" id="xpPw" minlength="8" autocomplete="new-password"></label>
+          <label>Confirm<input type="password" id="xpPw2" autocomplete="new-password"></label>
+        </div>
+        <button type="button" class="btn primary" id="xpData">Export setup file</button>
+      </section>
+      <section class="xp-card">
+        <h4>Import setup</h4>
+        <p class="muted small">Load a setup file and enter the password it was exported with. All current data is replaced by the file's contents.</p>
+        <label class="btn primary">Import setup file<input type="file" id="xpImport" hidden></label>
+      </section>
+    </div>
+    <div class="actions"><button type="button" class="btn ghost" id="xpCancel">Close</button></div>
+    <button type="button" class="close" id="xpClose" aria-label="Close">×</button>
+  </form>
+</dialog>
+
+<dialog id="paidDialog" class="modal">
+  <form method="dialog">
+    <h3 id="paidTitle">Mark as paid</h3>
+    <p class="muted small" id="paidText"></p>
+    <label>Paid on<input type="date" id="paidOn"></label>
+    <div class="actions">
+      <button type="button" class="btn danger ghost" data-close="unpaid" id="paidUndo">Mark unpaid</button>
+      <button type="button" class="btn ghost" data-close="cancel">Cancel</button>
+      <button class="btn primary" value="ok">Save as paid</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="tip" class="tip" hidden></div>
+<div id="bubble" class="bubble" hidden></div>
+<div id="toast" class="toast" hidden></div>
+<div id="pdfStage" class="pdf-stage" aria-hidden="true"></div>
+
+<script src="vendor/html2canvas.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="js/vault.js"></script>
+<script src="js/autosave.js"></script>
+<script src="js/templates.js"></script>
+<script src="js/parser.js"></script>
+<script src="js/app.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/timesheet.js"></script>
+</body>
+</html>
