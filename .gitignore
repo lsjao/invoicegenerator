@@ -1,0 +1,4 @@
+# Setup / backup files hold bank details (even when encrypted). Never commit them.
+invoice-maker-*.json
+*setup*.json
+*backup*.json
