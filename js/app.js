@@ -8,7 +8,7 @@
   const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v16 · 6 Oct 2026';
+  const APP_VERSION = 'v17 · 13 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -36,7 +36,7 @@
       phone: str(x.phone, 60), email: str(x.email, 200), notes: str(x.notes, 1000) }));
     out.sites = arr(d.sites).map(x => ({ code: str(x.code, 20), name: str(x.name, 200), area: str(x.area, 100), postcode: str(x.postcode, 20), aliases: arr(x.aliases).map(a => str(a, 100)) }));
     out.rates = arr(d.rates).map(r => numOr(r, NaN)).filter(Number.isFinite);
-    out.invoices = arr(d.invoices).map(i => ({ ...i, id: safeId(i.id), template: 'modern', number: str(i.number, 40), currency: 'GBP',
+    out.invoices = arr(d.invoices).map(i => ({ ...i, id: safeId(i.id), legacy: !!i.legacy, batch: str(i.batch, 20), template: 'modern', number: str(i.number, 40), currency: 'GBP',
       date: isoOr(i.date) || todayISO(), due: isoOr(i.due), weekStart: isoOr(i.weekStart), paidDate: isoOr(i.paidDate), paid: !!i.paid, notTax: !!i.notTax, selected: !!i.selected, archived: !!i.archived,
       createdAt: str(i.createdAt, 40), downloadedAt: i.downloadedAt ? str(i.downloadedAt, 40) : null, site: str(i.site, 20), label: str(i.label, 60), vatAll: VATS.includes(String(i.vatAll)) ? String(i.vatAll) : 'none',
       rate: i.rate === '' || i.rate == null ? '' : numOr(i.rate),
@@ -176,6 +176,8 @@
   function setMode(m) {
     $$('.mode[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
     $$('[data-modebody]').forEach(b => (b.hidden = b.dataset.modebody !== m));
+    $('[data-view="create"]').classList.toggle('past-mode', m === 'past');
+    if (m === 'past') renderPastUndo();
     renderPreview();
   }
   $$('.mode[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
@@ -187,6 +189,7 @@
     $('#clientSelect').value = match ? match.id : '';
     $('#subSelect').innerHTML = '<option value="">— New subcontractor —</option>' + db.subs.slice().sort((a, b) => a.name.localeCompare(b.name)).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
     const sm = findSub(cur.from.name); $('#subSelect').value = sm ? sm.id : '';
+    const pc = $('#pastClient'); if (pc) { const keep = pc.value; pc.innerHTML = db.clients.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('') || '<option value="">(no client saved)</option>'; pc.value = db.clients.some(c => c.id === keep) ? keep : (db.clients.find(c => c.id === db.settings.clientId) || db.clients[0] || {}).id || ''; }
     $('#dl-subs').innerHTML = db.subs.map(s => `<option value="${esc(s.name)}">`).join('');
     $('#dl-sites').innerHTML = db.sites.map(s => `<option value="${esc(s.code)}">${esc(s.name || '')}</option>`).join('');
     $('#dl-rates').innerHTML = db.rates.map(r => `<option value="${r}">`).join('');
@@ -367,6 +370,10 @@
     const { header, segments } = P.splitBatch(text, db);
     if (segments.length > 1) return extractBatch(header, segments);
 
+    if (P.looksLikePast(text)) {   // dated one-line records belong in Past invoices, not new numbered invoices
+      setMode('past'); $('#pastBox').value = text; previewPast();
+      return toast('That looks like past invoices, so it is in Past invoices. Nothing has been added yet.', 6000);
+    }
     batch = []; selBatch = -1;
     const r = P.parse(text, db);
     applyParse(cur, r);
@@ -517,6 +524,84 @@
   $('#pasteBox').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); extract(); } });
   $('#clearPaste').addEventListener('click', () => { $('#pasteBox').value = ''; $('#extractResult').hidden = true; batch = []; selBatch = -1; renderPreview(); });
 
+  /* ---------- Past invoices: records only. No invoice number is used and nothing existing is changed. ---------- */
+  let past = [], pastSkipped = [];
+  function previewPast() {
+    const { rows, skipped } = P.parsePastRecords($('#pastBox').value);
+    pastSkipped = skipped;
+    const seen = new Set();
+    past = rows.map(r => {
+      const sub = findSub(r.name), name = sub ? sub.name : r.name;
+      const site = r.site ? P.resolveSite(r.site, db.sites) : { code: '', from: '', how: '' };
+      const key = [name.toLowerCase(), r.date, site.code.toLowerCase(), r.amount.toFixed(2)].join('|');
+      const hit = db.invoices.find(i => i.from.name.toLowerCase() === name.toLowerCase() && Math.abs(totals(i).total - r.amount) < 0.005 && (i.date === r.date || i.items.some(it => it.date === r.date)));
+      const repeat = seen.has(key); seen.add(key);
+      return { ...r, name, known: !!sub, site: site.code, fix: site, dupOf: hit ? (hit.number || 'a past record') : '', repeat, include: !hit && !repeat };
+    });
+    renderPast();
+  }
+  function renderPast() {
+    const box = $('#pastResult');
+    if (!past.length && !pastSkipped.length) { box.hidden = true; return; }
+    box.hidden = false;
+    const n = past.filter(r => r.include).length, sum = past.filter(r => r.include).reduce((a, r) => a + r.amount, 0);
+    const chips = r => [
+      !r.known ? '<span class="chip warn" title="Not a saved subcontractor. The name is used as written.">Not saved</span>' : '',
+      !r.site ? '<span class="chip warn">No property</span>' : r.fix.how === 'unknown' ? `<span class="chip miss" title="Not a saved property">Unknown ${esc(r.fix.from)}</span>` : r.fix.how ? `<span class="chip fix" title="Corrected automatically">${esc(r.fix.from)} → ${esc(r.site)}</span>` : '',
+      r.dupOf ? `<span class="chip miss" title="Same subcontractor, amount and date already exists">Already recorded (${esc(r.dupOf)})</span>` : '',
+      r.repeat ? '<span class="chip miss">Repeated in this paste</span>' : ''
+    ].join('');
+    box.innerHTML = `
+      <div class="small muted">${past.length} record(s) found${pastSkipped.length ? ` · ${pastSkipped.length} line(s) not understood` : ''}. Rows that look like existing entries are switched off.</div>
+      <div class="table-wrap"><table class="data past-table">
+        <thead><tr><th><input type="checkbox" id="pastAll"${past.length && past.every(r => r.include) ? ' checked' : ''} aria-label="Select all"></th><th>Date</th><th>Subcontractor</th><th>Property</th><th class="r">Amount</th><th>Reference (optional)</th><th>Check</th></tr></thead>
+        <tbody>${past.map((r, i) => `<tr data-pi="${i}" class="${r.include ? '' : 'off'}">
+          <td><input type="checkbox" data-pinc${r.include ? ' checked' : ''}></td><td>${shortDate(r.date)}</td><td>${esc(r.name)}</td><td>${esc(r.site)}</td><td class="r">£${money(r.amount)}</td>
+          <td><input data-pref value="${esc(r.ref)}" placeholder="none" size="10"></td><td><div class="chips">${chips(r)}</div></td></tr>`).join('')}</tbody></table></div>
+      ${pastSkipped.length ? `<details class="past-skipped"><summary>${pastSkipped.length} line(s) not understood</summary><pre>${esc(pastSkipped.join('\n'))}</pre></details>` : ''}
+      <div class="batch-bar"><span class="muted small">${n} selected · £${money(sum)} · numbering stays at ${esc(numberFor())}</span>
+        <button class="btn primary" id="pastAdd"${n ? '' : ' disabled'}>Add ${n} past record${n === 1 ? '' : 's'}</button></div>`;
+  }
+  const pastBatches = () => { const g = {}; db.invoices.filter(i => i.legacy && i.batch).forEach(i => { (g[i.batch] = g[i.batch] || []).push(i); }); return Object.values(g).sort((a, b) => (b[0].createdAt || '').localeCompare(a[0].createdAt || '')); };
+  function renderPastUndo() {
+    const box = $('#pastUndo'), last = pastBatches()[0];
+    box.hidden = !last;
+    if (last) box.innerHTML = `<span class="small muted">Last import: ${last.length} record(s), £${money(last.reduce((a, i) => a + totals(i).total, 0))}</span> <button class="btn small ghost danger" id="pastUndoBtn">Undo that import</button>`;
+  }
+  function addPast() {
+    const picked = past.filter(r => r.include);
+    if (!picked.length) return toast('Nothing selected');
+    const id = uid(), at = new Date().toISOString(), paid = $('#pastPaid').checked;
+    const client = db.clients.find(c => c.id === $('#pastClient').value) || db.clients[0] || { name: '', addr: '' };
+    const refs = $$('#pastResult [data-pref]').map(el => el.value.trim());
+    picked.forEach(r => {
+      const sub = findSub(r.name), idx = past.indexOf(r);
+      db.invoices.push({ id: uid(), legacy: true, batch: id, template: 'modern', number: str(refs[idx] ?? r.ref, 40), date: r.date, due: '', weekStart: P.mondayOf(r.date), site: '', rate: '', label: 'Labour', vatAll: 'none',
+        from: sub ? { name: sub.name, addr: sub.addr || '', accName: sub.accName || sub.name, accNo: sub.accNo || '', sort: sub.sort || '' } : { name: r.name, addr: '', accName: r.name, accNo: '', sort: '' },
+        to: { name: client.name, addr: client.addr }, items: [{ date: '', site: r.site, label: 'Labour', qty: 1, price: r.amount, vat: 'none', lump: true }],
+        notTax: false, currency: 'GBP', paid, ...(paid ? { paidDate: r.date } : {}), createdAt: at, downloadedAt: null, selected: false, archived: true });
+    });
+    saveNow(); updateBadge();
+    $('#pastBox').value = ''; past = []; pastSkipped = []; renderPast(); renderPastUndo();
+    toast(`${picked.length} past record(s) added. Invoice numbering unchanged (next ${numberFor()}).`, 6000);
+  }
+  $('#pastParse').addEventListener('click', () => ($('#pastBox').value.trim() ? previewPast() : toast('Paste some past invoices first')));
+  $('#pastBox').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); previewPast(); } });
+  $('#pastClear').addEventListener('click', () => { $('#pastBox').value = ''; past = []; pastSkipped = []; renderPast(); });
+  $('#pastResult').addEventListener('change', e => {
+    const t = e.target;
+    if (t.id === 'pastAll') { past.forEach(r => (r.include = t.checked)); return renderPast(); }
+    if (t.hasAttribute('data-pinc')) { past[t.closest('[data-pi]').dataset.pi].include = t.checked; renderPast(); }
+  });
+  $('#pastResult').addEventListener('input', e => { if (e.target.hasAttribute('data-pref')) past[e.target.closest('[data-pi]').dataset.pi].ref = e.target.value; });
+  $('#pastResult').addEventListener('click', e => { if (e.target.id === 'pastAdd') addPast(); });
+  $('#pastUndo').addEventListener('click', async e => {
+    if (e.target.id !== 'pastUndoBtn') return;
+    const last = pastBatches()[0]; if (!last) return;
+    if (!(await ask(`Remove the ${last.length} past record(s) from the last import? Your other invoices are not touched.`, 'Undo import'))) return;
+    deleteInvoices(last); renderPastUndo();
+  });
+
   /* ---------- Preview ---------- */
   function renderInvoiceHTML(inv) { const t = window.TEMPLATES[inv.template] || window.TEMPLATES.classic; return t.render(inv, H); }
   let previewRaf;
@@ -584,7 +669,7 @@
   function problems(inv) {
     const p = [];
     if (!inv.from.name) p.push('Subcontractor name');
-    if (!inv.number) p.push('Reference number');
+    if (!inv.number && !inv.legacy) p.push('Reference number');
     if (!inv.items.length) p.push('At least one work line');
     if (inv.items.some(i => !+i.price)) p.push('Price on every line');
     return p;
@@ -595,7 +680,7 @@
     if (!cur.from.accNo || !cur.from.sort) warn.push('Bank details incomplete');
     if (!cur.from.addr) warn.push('Subcontractor address empty');
     if (!cur.to.name) warn.push('Bill-to company empty');
-    const dup = db.invoices.find(i => i.number === cur.number && i.from.name === cur.from.name && i.id !== editingId);
+    const dup = !cur.legacy && db.invoices.find(i => !i.legacy && i.number === cur.number && i.from.name === cur.from.name && i.id !== editingId);
     if (dup) warn.push(`Reference ${cur.number} already used for ${cur.from.name}`);
     const bad = problems(cur);
     $('#checkList').innerHTML = [
@@ -633,11 +718,11 @@
     const inv = JSON.parse(JSON.stringify(src));
     inv.items.forEach(it => delete it._priceSet);
     delete inv._fixes; delete inv._format; delete inv._warn;
-    remember(inv);
+    if (!inv.legacy) remember(inv);   // past records never move the number sequence or add rates/sites
     if (editingId) {
       const i = db.invoices.findIndex(x => x.id === editingId);
       const old = db.invoices[i] || {};
-      inv.id = editingId; inv.createdAt = old.createdAt; inv.downloadedAt = null; inv.selected = true; inv.archived = false;
+      inv.id = editingId; inv.createdAt = old.createdAt; inv.downloadedAt = null; inv.selected = !inv.legacy; inv.archived = !!inv.legacy;
       db.invoices[i] = inv;
     } else {
       inv.id = uid(); inv.createdAt = new Date().toISOString(); inv.selected = true; inv.archived = false; inv.downloadedAt = null;
@@ -673,9 +758,9 @@
       const days = inv.items.map(i => i.date).filter(Boolean).sort();
       return `<li data-id="${inv.id}">
         <label class="toggle" title="Include in download"><input type="checkbox" data-sel${inv.selected ? ' checked' : ''}><span></span></label>
-        <div class="q-main"><b>${esc(inv.number)} · ${esc(inv.from.name)}</b>
+        <div class="q-main"><b>${esc(inv.number || 'Past record')} · ${esc(inv.from.name)}</b>
           <span>${longDate(inv.date)}${days.length ? ` · work ${shortDate(days[0])}–${shortDate(days[days.length - 1])}` : (inv.items.find(i => i.week) ? ` · week of ${shortDate(inv.items.find(i => i.week).week)}` : '')}
-          ${inv.downloadedAt ? ' · <span class="pill ok">Downloaded</span>' : ''}${inv.archived ? ' · <span class="pill">Archived</span>' : ''}</span></div>
+          ${inv.legacy && inv.number ? ' · <span class="pill">Past record</span>' : ''}${inv.downloadedAt ? ' · <span class="pill ok">Downloaded</span>' : ''}${inv.archived ? ' · <span class="pill">Archived</span>' : ''}</span></div>
         <div class="q-amt">£${money(t.total)}</div>
         <div class="q-act">
           ${inv.paid ? `<button class="pill paid pay-btn" data-act="paid" title="Change paid date or mark unpaid">Paid ${inv.paidDate ? shortDate(inv.paidDate) : ''}</button>`
@@ -703,9 +788,9 @@
     const gone = new Set(list);
     db.invoices = db.invoices.filter(i => !gone.has(i));
     const numOf = i => +(String(i.number).match(/(\d+)\s*$/) || [])[1] || 0;
-    const top = Math.max(0, ...db.invoices.map(numOf));
+    const top = Math.max(0, ...db.invoices.filter(i => !i.legacy).map(numOf));   // past-record references never count
     const before = db.settings.nextNo;
-    if (list.some(i => numOf(i) === before - 1)) db.settings.nextNo = top + 1;
+    if (list.some(i => !i.legacy && numOf(i) === before - 1)) db.settings.nextNo = top + 1;
     saveNow(); renderQueue(); fillForm();
     if (!editingId && !numberTouched) { cur.number = numberFor(); fillForm(); renderPreview(); }
     toast(`${list.length} invoice(s) deleted${db.settings.nextNo !== before ? ` · next number ${numberFor()}` : ''}`, 4000);
@@ -753,7 +838,7 @@
       cur.number = numberFor(sub); cur.date = todayISO(); cur.due = '';
       cur.weekStart = P.addDays(inv.weekStart || P.mondayOf(inv.items[0]?.date || todayISO()), 7);
       cur.items = cur.items.map(it => ({ ...it, date: it.date ? P.addDays(it.date, 7) : '' }));
-      delete cur.createdAt; delete cur.downloadedAt;
+      delete cur.createdAt; delete cur.downloadedAt; delete cur.legacy; delete cur.batch;
       fillForm(); onChange(); showTab('create'); setMode('form'); showStep('details');
       toast('Copied with dates moved +1 week');
     }
@@ -775,7 +860,7 @@
   });
 
   /* ---------- PDF ---------- */
-  const fileName = inv => `${inv.number} - ${(inv.from.name || '').trim().split(/\s+/).pop() || 'Invoice'}`.replace(/[\\/:*?"<>|]/g, '') + '.pdf';
+  const fileName = inv => `${inv.number || 'Past record ' + inv.date} - ${(inv.from.name || '').trim().split(/\s+/).pop() || 'Invoice'}`.replace(/[\\/:*?"<>|]/g, '') + '.pdf';
   async function invoicePdfBlob(inv) {
     const stage = $('#pdfStage');
     stage.innerHTML = renderInvoiceHTML(inv);

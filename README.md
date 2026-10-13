@@ -6,6 +6,7 @@ Static invoice tool for subcontractor labour invoices. Open `index.html` in a br
 - **Create**: fill details by quick paste (one or many subcontractors, auto-extracted), full form with a week calendar, or step-by-step dialogs. Review, then add to the PDF queue.
 - **Paid invoices**: paste payment notes (`Payee`, `Amount`, `Date`, `Reference`) to create invoices already marked paid.
 - **Site references**: typed codes are matched to saved sites by code, property name or alias; one-letter typos are corrected (5CF → 5CD).
+- **Past invoices**: paste old invoices one per line (`5 Jan 2026 <tab> Name - Subcontractor - SITE <tab> 420`, optional reference column). They are added as paid records with no invoice number: the numbering never moves and existing invoices are never changed. Entries that match an existing invoice are switched off, and the last import can be undone.
 - **Payment tracking**: mark invoices paid (with a date) or back to unpaid from the Queue, one at a time or in bulk; the Dashboard lists everything waiting to be paid, oldest first, with totals per subcontractor.
 - **Queue**: toggle which invoices to include, download as separate PDFs or one ZIP. Edit, copy to next week, archive.
 - **Subcontractors**: quick add from pasted text (one or many), plus saved contacts with address, bank account, sort code, base day rate, VAT and numbering.

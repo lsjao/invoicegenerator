@@ -37,6 +37,7 @@
       <div class="mode-tabs">
         <button class="mode active" data-mode="paste">Quick paste</button>
         <button class="mode" data-mode="form">Form</button>
+        <button class="mode" data-mode="past">Past invoices</button>
         <button class="btn small" id="startWizard">Step-by-step</button>
       </div>
 
@@ -56,6 +57,20 @@ Anna Kowal
           <span class="muted small">Ctrl + Enter</span>
         </div>
         <div id="extractResult" class="extract-result" hidden></div>
+      </div>
+
+      <div class="mode-body" data-modebody="past" hidden>
+        <p class="hint">For old invoices with no reference, or a different one. Each line is added as a record: no invoice number is used, the numbering never moves, and existing invoices are never changed or replaced.</p>
+        <textarea id="pastBox" rows="9" placeholder="5 Jan 2026&#9;John Smith - Subcontractor - 12AB&#9;420
+12 Jan 2026&#9;Anna Kowal - Subcontractor - 5CD&#9;300"></textarea>
+        <div class="row gap past-opts">
+          <button class="btn primary" id="pastParse">Preview records</button>
+          <button class="btn ghost" id="pastClear">Clear</button>
+          <label class="check"><input type="checkbox" id="pastPaid" checked> Mark as paid on that date</label>
+        </div>
+        <label class="past-client">Billed to<select id="pastClient"></select></label>
+        <div id="pastResult" class="past-result" hidden></div>
+        <div id="pastUndo" class="past-undo" hidden></div>
       </div>
 
       <div class="mode-body" data-modebody="form" hidden>
@@ -246,6 +261,7 @@ Anna Kowal
     <label class="f-custom">To<input type="date" id="fTo"></label>
     <label>Subcontractor<select id="fSub"></select></label>
     <label>Property / site<select id="fSite"></select></label>
+    <label>Show<select id="fKind"><option value="">Invoices and past records</option><option value="current">Numbered invoices only</option><option value="past">Past records only</option></select></label>
     <label>Payment<select id="fStatus"><option value="">Paid and unpaid</option><option value="unpaid">Unpaid only</option><option value="paid">Paid only</option></select></label>
     <button class="btn ghost" id="exportCsv">Export CSV</button>
     <button class="btn primary" id="exportAll">Setup file</button>

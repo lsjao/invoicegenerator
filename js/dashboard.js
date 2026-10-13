@@ -33,8 +33,8 @@ window.initDashboard = function () {
   }
 
   function filtered() {
-    const [a, b] = range(), sub = $('#fSub').value, site = $('#fSite').value, st = $('#fStatus').value;
-    return allRows().filter(r => r.date >= a && r.date <= b && (!sub || r.sub === sub) && (!site || r.site === site) && (!st || (st === 'paid') === !!r.inv.paid));
+    const [a, b] = range(), sub = $('#fSub').value, site = $('#fSite').value, st = $('#fStatus').value, kind = $('#fKind').value;
+    return allRows().filter(r => r.date >= a && r.date <= b && (!sub || r.sub === sub) && (!site || r.site === site) && (!st || (st === 'paid') === !!r.inv.paid) && (!kind || (kind === 'past') === !!r.inv.legacy));
   }
 
   function fillFilters() {
@@ -148,7 +148,7 @@ window.initDashboard = function () {
     const sel = calSel && (isW ? byWeek.get(calSel.slice(1)) : byDay.get(calSel));
     const selTitle = !sel ? '' : isW ? `Week ${shortDate(calSel.slice(1))} – ${shortDate(P.addDays(calSel.slice(1), 6))}` : `${weekdayName(calSel)} ${shortDate(calSel)}`;
     $('#calDay').innerHTML = sel
-      ? `<b>${selTitle}</b> · £${money(sel.gross)}<table class="data" style="margin-top:6px"><tr><th>Subcontractor</th><th>Site</th>${isW ? '<th class="r">Days</th>' : ''}<th>Invoice</th><th class="r">Amount</th></tr>${sel.rows.map(r => `<tr><td>${esc(r.sub)}</td><td>${esc(r.site)}</td>${isW ? `<td class="r">${r.qty}</td>` : ''}<td>${esc(r.inv.number)}</td><td class="r">£${money(r.gross)}</td></tr>`).join('')}</table>`
+      ? `<b>${selTitle}</b> · £${money(sel.gross)}<table class="data" style="margin-top:6px"><tr><th>Subcontractor</th><th>Site</th>${isW ? '<th class="r">Days</th>' : ''}<th>Invoice</th><th class="r">Amount</th></tr>${sel.rows.map(r => `<tr><td>${esc(r.sub)}</td><td>${esc(r.site)}</td>${isW ? `<td class="r">${r.qty}</td>` : ''}<td>${esc(r.inv.number || 'Past record')}</td><td class="r">£${money(r.gross)}</td></tr>`).join('')}</table>`
       : `<div class="cal-legend">Less <i></i><i style="background:#f1eacb"></i><i style="background:#e0d192"></i><i style="background:#C8B21B"></i><i style="background:#7a6c0f"></i> More · click a day for detail</div>`;
   }
 
@@ -158,7 +158,7 @@ window.initDashboard = function () {
     $('#lineTable').innerHTML = `<thead><tr><th>Date</th><th>Subcontractor</th><th>Site</th><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th>VAT</th><th class="r">Total</th><th>Invoice</th><th>Status</th></tr></thead><tbody>` +
       sorted.slice(0, 500).map(r => `<tr><td>${r.isWeek ? `w/c ${shortDate(r.date)}` : shortDate(r.date)}</td><td>${esc(r.sub)}</td><td>${esc(r.site)}</td><td>${esc(H.lineDesc(r.it))}</td>
         <td class="r">${r.qty}</td><td class="r">${money(r.it.price)}</td><td>${H.vatLabel(r.it.vat)}</td><td class="r">£${money(r.gross)}</td>
-        <td><a href="#" data-edit="${r.inv.id}">${esc(r.inv.number)}</a></td><td>${r.inv.paid ? '<span class="pill paid">Paid</span>' : '<span class="pill">Unpaid</span>'}</td></tr>`).join('') + '</tbody>';
+        <td><a href="#" data-edit="${r.inv.id}">${esc(r.inv.number || 'Past record')}</a></td><td>${r.inv.paid ? '<span class="pill paid">Paid</span>' : '<span class="pill">Unpaid</span>'}</td></tr>`).join('') + '</tbody>';
   }
 
   // Unpaid invoices, oldest first, regardless of the period filter so nothing owed is hidden
@@ -196,15 +196,15 @@ window.initDashboard = function () {
   function csvText(rows) { const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`; return rows.map(r => r.map(q).join(',')).join('\r\n'); }
   function lineRows(rows) {
     rows = rows.slice().sort((a, b) => a.date.localeCompare(b.date));
-    return [['Date', 'Week commencing', 'Subcontractor', 'Site', 'Property', 'Description', 'Qty', 'Unit price', 'VAT', 'Net', 'VAT amount', 'Gross', 'Invoice', 'Invoice date', 'Status', 'Paid on', 'Bill to']]
-      .concat(rows.map(r => [r.date, P.mondayOf(r.date), r.sub, r.site, siteName(r.site), H.lineDesc(r.it), r.qty, r.it.price, H.vatLabel(r.it.vat), r.net.toFixed(2), r.vat.toFixed(2), r.gross.toFixed(2), r.inv.number, r.inv.date, r.inv.paid ? 'Paid' : 'Unpaid', r.inv.paidDate || '', r.inv.to.name]));
+    return [['Date', 'Week commencing', 'Subcontractor', 'Site', 'Property', 'Description', 'Qty', 'Unit price', 'VAT', 'Net', 'VAT amount', 'Gross', 'Invoice', 'Invoice date', 'Type', 'Status', 'Paid on', 'Bill to']]
+      .concat(rows.map(r => [r.date, P.mondayOf(r.date), r.sub, r.site, siteName(r.site), H.lineDesc(r.it), r.qty, r.it.price, H.vatLabel(r.it.vat), r.net.toFixed(2), r.vat.toFixed(2), r.gross.toFixed(2), r.inv.number, r.inv.date, r.inv.legacy ? 'Past record' : 'Invoice', r.inv.paid ? 'Paid' : 'Unpaid', r.inv.paidDate || '', r.inv.to.name]));
   }
   function csv() {
     const blob = new Blob([csvText(lineRows(filtered()))], { type: 'text/csv' });
     window.IM.saveBlob(blob, `invoice-lines-${iso(new Date())}.csv`);
   }
 
-  ['#fPeriod', '#fFrom', '#fTo', '#fSub', '#fSite', '#fStatus'].forEach(s => $(s).addEventListener('change', () => { calMonth = null; render(); }));
+  ['#fPeriod', '#fFrom', '#fTo', '#fSub', '#fSite', '#fStatus', '#fKind'].forEach(s => $(s).addEventListener('change', () => { calMonth = null; render(); }));
   $('#exportCsv').addEventListener('click', csv);
   $('#exportAll').addEventListener('click', () => window.IM.openExport());
   const shift = n => { const [y, m] = calMonth.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); calMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; calendar(filtered()); };

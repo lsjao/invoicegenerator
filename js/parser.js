@@ -390,5 +390,81 @@
     return { code: key.length <= 10 && !/\s/.test(from) ? key : from, from, how: 'unknown' };
   }
 
-  window.InvoiceParser = { parse, splitBatch, resolveSite, parseDate, mondayOf, addDays };
+  /*
+   * Past invoices: one record per line, "date  Name - Subcontractor - SITE  amount"
+   * (tab separated from a spreadsheet, or plain spaces). An optional reference can be a further
+   * column or a "INV-0123" style part of the description. Nothing here touches invoice numbering.
+   */
+  const MON = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?';
+  const LEAD_DATE = [
+    /^(\d{4}-\d{2}-\d{2})/,
+    /^(\d{1,2}[\/.\-]\d{1,2}[\/.\-](?:\d{4}|\d{2}))(?!\d)/,
+    new RegExp('^(\\d{1,2}(?:st|nd|rd|th)?\\s+' + MON + ',?(?:\\s+\\d{4})?)', 'i'),
+    new RegExp('^(' + MON + '\\s+\\d{1,2}(?:st|nd|rd|th)?,?(?:\\s+\\d{4})?)', 'i')
+  ];
+  const AMOUNT = /^£?\s*(\d[\d,]*(?:\.\d{1,2})?)$/;
+  const REF = /^(?:ref(?:erence)?\.?\s*[:#]?\s*)?((?:inv(?:oice)?)[\s-]?\d+[A-Za-z0-9-]*|[A-Za-z]{1,5}-\d{2,}[A-Za-z0-9-]*|#\d+)$/i;
+  const ROLE = /^(subcontractors?|sub|labou?r|maintenance|invoice|payment|paid)$/i;
+
+  function splitDesc(desc) {
+    const parts = desc.split(/\s+[-–—]\s+/).map(x => x.trim()).filter(Boolean);
+    let name = parts.shift() || '', ref = '', site = '';
+    const rest = [];
+    for (const part of parts) {
+      if (ROLE.test(part)) continue;
+      const r = part.match(REF);
+      if (r && !ref) ref = r[1].replace(/^#/, ''); else rest.push(part);
+    }
+    if (rest.length) site = rest[rest.length - 1];
+    return { name, site, ref };
+  }
+
+  function parseRecordLine(line) {
+    let dateStr = '', desc = '', amountStr = '', ref = '';
+    const cells = line.split(/\t+/).map(c => c.trim()).filter(Boolean);
+    if (cells.length >= 3) {
+      // Spreadsheet row: find the date, the amount and the description wherever they sit
+      const di = cells.findIndex(c => c.length <= 24 && LEAD_DATE.some(rx => rx.test(c)) && parseDate(c));
+      let ai = -1; cells.forEach((c, i) => { if (i !== di && AMOUNT.test(c)) ai = i; });
+      if (di < 0 || ai < 0) return null;
+      const others = cells.filter((_, i) => i !== di && i !== ai);
+      const di2 = others.findIndex(c => /[A-Za-z]{3}/.test(c) && /\s[-–—]\s|\s/.test(c));
+      desc = di2 >= 0 ? others[di2] : others[0] || '';
+      others.forEach((c, i) => { if (i !== (di2 >= 0 ? di2 : 0) && !ref) { const m = c.match(REF); ref = m ? m[1].replace(/^#/, '') : (c.length <= 40 ? c : ''); } });
+      dateStr = cells[di]; amountStr = cells[ai];
+    } else {
+      let lead = null;
+      for (const rx of LEAD_DATE) { const m = line.match(rx); if (m) { lead = m[1]; break; } }
+      if (!lead) return null;
+      const rest = line.slice(lead.length).trim();
+      const am = rest.match(/^(.*\S)\s+£?\s*(\d[\d,]*(?:\.\d{1,2})?)$/);
+      if (!am) return null;
+      dateStr = lead; desc = am[1]; amountStr = am[2];
+    }
+    const d = parseDate(dateStr);
+    const amount = +amountStr.replace(/[£,\s]/g, '');
+    if (!d || !(amount > 0) || !desc) return null;
+    const x = splitDesc(desc);
+    if (!x.name || !/[A-Za-z]/.test(x.name)) return null;
+    return { date: d.iso, name: x.name, site: x.site, amount, ref: ref || x.ref, hyphenated: /\s[-–—]\s/.test(desc), tabbed: cells.length >= 3 };
+  }
+
+  function parsePastRecords(text) {
+    const rows = [], skipped = [];
+    for (const raw of String(text).split(/\r?\n/)) {
+      const line = raw.trim(); if (!line) continue;
+      const r = parseRecordLine(line);
+      if (r) rows.push(r); else skipped.push(line);
+    }
+    return { rows, skipped };
+  }
+
+  // True when most lines are dated one-line records (so the text belongs in "Past invoices")
+  function looksLikePast(text) {
+    const { rows, skipped } = parsePastRecords(text);
+    const sure = rows.filter(r => r.tabbed || r.hyphenated).length;
+    return sure > 0 && sure >= (rows.length + skipped.length) * 0.6;
+  }
+
+  window.InvoiceParser = { parse, splitBatch, resolveSite, parsePastRecords, looksLikePast, parseDate, mondayOf, addDays };
 })();

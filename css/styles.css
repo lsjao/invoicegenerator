@@ -443,3 +443,16 @@ table.data td.late { color: var(--danger); font-weight: 600; }
 .autosave-box { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); display: grid; gap: 8px; justify-items: start; }
 .autosave-box h4 { margin: 0; font-size: 14px; color: var(--ink); }
 .autosave-box p { margin: 0; }
+
+/* Past invoices */
+.layout.past-mode { grid-template-columns: minmax(0, 1100px); justify-content: center; }
+.layout.past-mode .right, .layout.past-mode .steps, .layout.past-mode [data-panel="details"] > .actions { display: none; }
+.past-opts { margin: 8px 0 4px; }
+.past-client { max-width: 340px; margin-top: 8px; }
+.past-result { margin-top: 12px; display: grid; gap: 10px; }
+.past-table td { vertical-align: middle; }
+.past-table tr.off td { opacity: .55; }
+.past-table input[data-pref] { padding: 3px 6px; min-width: 90px; }
+.past-table .chips { margin: 0; }
+.past-skipped pre { white-space: pre-wrap; font-size: 12px; margin: 6px 0 0; color: var(--muted); }
+.past-undo { margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

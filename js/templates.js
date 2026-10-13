@@ -41,7 +41,7 @@ window.TEMPLATES = {
         <div class="c-to"><div class="lbl">To:</div><div>${h.esc(inv.to.name)}<br>${h.lines(inv.to.addr)}</div></div>
         <div class="c-meta">
           <b>Invoice Date</b><div>${h.longDate(inv.date)}</div>
-          <b>Reference Number</b><div>${h.esc(inv.number)}</div>
+          ${inv.number ? `<b>Reference Number</b><div>${h.esc(inv.number)}</div>` : ''}
         </div>
         <div class="c-from">${h.esc(inv.from.name)}<br>${h.lines(inv.from.addr)}</div>
         <table class="c-items">
@@ -98,7 +98,7 @@ window.TEMPLATES = {
       <div class="page tpl-modern">
         <div class="m-band">
           <div><h1>INVOICE</h1>${inv.notTax ? '<div>This is not a tax invoice</div>' : ''}${inv.paid ? '<div class="m-paid">PAID</div>' : ''}</div>
-          <div class="m-ref"><b>${h.esc(inv.number)}</b><br>${h.longDate(inv.date)}${inv.paid ? (inv.paidDate ? '<br>Paid ' + h.longDate(inv.paidDate) : '') : inv.due ? '<br>Due ' + h.longDate(inv.due) : ''}</div>
+          <div class="m-ref">${inv.number ? '<b>' + h.esc(inv.number) + '</b><br>' : ''}${h.longDate(inv.date)}${inv.paid ? (inv.paidDate ? '<br>Paid ' + h.longDate(inv.paidDate) : '') : inv.due ? '<br>Due ' + h.longDate(inv.due) : ''}</div>
         </div>
         <div class="m-parties">
           <div><small>From</small><b>${h.esc(inv.from.name)}</b><br>${h.lines(inv.from.addr)}</div>
