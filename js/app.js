@@ -7,8 +7,9 @@
   const pad = n => String(n).padStart(2, '0');
   const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v17 · 13 Oct 2026';
+  const APP_VERSION = 'v18 · 14 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -111,7 +112,12 @@
     return n ? db.subs.find(s => s.name.trim().toLowerCase() === n) || db.subs.find(s => (s.aliases || []).some(a => a.trim().toLowerCase() === n)) : undefined;
   };
   const fmtSort = s => { const d = String(s || '').replace(/\D/g, ''); return d.length === 6 ? d.replace(/(\d\d)(\d\d)(\d\d)/, '$1-$2-$3') : s; };
-  const lastMonday = () => P.addDays(P.mondayOf(todayISO()), -7);
+  // Calendars run Sunday to Saturday. A week is stored as the Monday that follows its Sunday (weekStart),
+  // which is also the key for whole-week lines, so existing data keeps working.
+  const sundayOn = iso => P.addDays(iso, -new Date(iso + 'T00:00:00Z').getUTCDay());
+  const weekKey = iso => P.addDays(sundayOn(iso), 1);
+  const pickSun = ws => P.addDays(P.mondayOf(ws), -1);
+  const lastMonday = () => P.addDays(weekKey(todayISO()), -7);
   const vatOptionsHtml = sel => VAT_OPTIONS.map(([v, l]) => `<option value="${v}"${String(sel) === v ? ' selected' : ''}>${l}</option>`).join('');
 
   /* ---------- Numbering ---------- */
@@ -138,7 +144,7 @@
   let cur = blankInvoice();
   let editingId = null;
   let numberTouched = false;
-  let dayPicks = [true, true, true, true, true, false, false];
+  let dayPicks = [false, true, true, true, true, true, false];   // Sun..Sat: Monday to Friday on
 
   function applySub(sub, inv = cur) {
     if (!sub) return;
@@ -177,6 +183,7 @@
     $$('.mode[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
     $$('[data-modebody]').forEach(b => (b.hidden = b.dataset.modebody !== m));
     $('[data-view="create"]').classList.toggle('past-mode', m === 'past');
+    $('[data-view="create"]').classList.toggle('form-mode', m === 'form');
     if (m === 'past') renderPastUndo();
     renderPreview();
   }
@@ -240,25 +247,25 @@
   $('#vatAll').addEventListener('change', e => { cur.vatAll = e.target.value; cur.items.forEach(it => (it.vat = cur.vatAll)); renderItems(); onChange(); });
 
   function weekLabel(ws) {
-    const we = P.addDays(ws, 6), a = parseISO(ws), b = parseISO(we);
+    const sun = pickSun(ws), we = P.addDays(sun, 6), a = parseISO(sun), b = parseISO(we);
     const title = a.m === b.m ? `${a.d} – ${b.d} ${MONTHS[b.m - 1]} ${b.y}` : `${a.d} ${MONTHS[a.m - 1]} – ${b.d} ${MONTHS[b.m - 1]} ${b.y}`;
-    const diff = Math.round((new Date(ws) - new Date(P.mondayOf(todayISO()))) / 604800000);
+    const diff = Math.round((new Date(sun) - new Date(sundayOn(todayISO()))) / 604800000);
     const sub = diff === 0 ? 'This week' : diff === -1 ? 'Last week' : diff === 1 ? 'Next week' : diff < 0 ? `${-diff} weeks ago` : `In ${diff} weeks`;
     return { title, sub };
   }
   function renderDayPicks() {
     if (!cur.weekStart) cur.weekStart = lastMonday();
-    const ws = cur.weekStart, today = todayISO();
-    const l = weekLabel(ws);
+    const ws = pickSun(cur.weekStart), today = todayISO();
+    const l = weekLabel(cur.weekStart);
     $('#wkTitle').textContent = l.title; $('#wkSub').textContent = l.sub;
     const has = new Set(cur.items.map(i => i.date));
-    $('#dayPicks').innerHTML = DAY_NAMES.map((d, i) => {
+    $('#dayPicks').innerHTML = SUN_NAMES.map((d, i) => {
       const date = P.addDays(ws, i);
       return `<label class="daycell${date === today ? ' today' : ''}${has.has(date) ? ' has' : ''}" title="${has.has(date) ? 'Already has a line' : ''}"><input type="checkbox" data-day="${i}"${dayPicks[i] ? ' checked' : ''}><span><small>${d.slice(0, 3)}</small><b>${+date.slice(8)}</b></span></label>`;
     }).join('');
   }
   $('#dayPicks').addEventListener('change', e => { const i = e.target.dataset.day; if (i != null) dayPicks[i] = e.target.checked; });
-  const moveWeek = n => { cur.weekStart = n === 0 ? P.mondayOf(todayISO()) : P.addDays(cur.weekStart || lastMonday(), 7 * n); renderDayPicks(); onChange(); };
+  const moveWeek = n => { cur.weekStart = n === 0 ? weekKey(todayISO()) : P.addDays(cur.weekStart || lastMonday(), 7 * n); renderDayPicks(); onChange(); };
   $('#wkPrev').addEventListener('click', () => moveWeek(-1));
   $('#wkNext').addEventListener('click', () => moveWeek(1));
   $('#wkThis').addEventListener('click', () => moveWeek(0));
@@ -267,7 +274,7 @@
     if (!cur.weekStart) return toast('Pick the week commencing date first');
     const picked = dayPicks.map((on, i) => (on ? i : -1)).filter(i => i >= 0);
     if (!picked.length) return toast('Select at least one day');
-    for (const i of picked) cur.items.push({ date: P.addDays(cur.weekStart, i), site: (cur.site || '').toUpperCase(), label: cur.label || 'Labour', qty: 1, price: +cur.rate || 0, vat: cur.vatAll || 'none' });
+    for (const i of picked) cur.items.push({ date: P.addDays(pickSun(cur.weekStart), i), site: (cur.site || '').toUpperCase(), label: cur.label || 'Labour', qty: 1, price: +cur.rate || 0, vat: cur.vatAll || 'none' });
     cur.items.sort((a, b) => (a.date || '9').localeCompare(b.date || '9'));
     renderItems(); renderDayPicks(); onChange();
   });
@@ -312,6 +319,14 @@
     $$('[data-k="from.name"]').forEach(el => (el._lastApplied = null));
     fillForm(); onChange(); showStep('details');
   }
+
+  // Full-width editing: hide the preview so the lines table gets the whole screen
+  $('#wideToggle').addEventListener('click', () => {
+    const v = $('[data-view="create"]'), on = v.classList.toggle('wide-edit');
+    $('#wideToggle').textContent = on ? 'Show preview' : 'Full width';
+    $('#wideToggle').setAttribute('aria-pressed', on);
+    renderPreview();
+  });
 
   /* ---------- Paste extraction ---------- */
   // Fill an invoice object from a parse result. Returns the matched saved subcontractor, if any.
@@ -1259,14 +1274,14 @@
       const draw = () => { const l = weekLabel(wizWeek); $('#wizWk').innerHTML = `<b>${l.title}</b><small>${l.sub}</small>`; };
       box.innerHTML = `<div class="weeknav"><button type="button" class="btn ghost" data-ww="-1">‹</button><div class="wk-label" id="wizWk"></div><button type="button" class="btn ghost" data-ww="1">›</button><button type="button" class="btn ghost small" data-ww="0">This week</button></div>`;
       draw();
-      box.onclick = e => { const n = e.target.dataset.ww; if (n == null) return; wizWeek = +n === 0 ? P.mondayOf(todayISO()) : P.addDays(wizWeek, 7 * +n); draw(); };
+      box.onclick = e => { const n = e.target.dataset.ww; if (n == null) return; wizWeek = +n === 0 ? weekKey(todayISO()) : P.addDays(wizWeek, 7 * +n); draw(); };
     }
     else if (s.type === 'days') {
-      const ws = cur.weekStart || lastMonday();
+      const ws = pickSun(cur.weekStart || lastMonday());
       const existing = {}; cur.items.forEach(it => { if (it.date) existing[it.date] = it.site; });
       const anyExisting = cur.items.length > 0;
-      box.innerHTML = `<p class="muted small">Week commencing ${longDate(ws)}. Tick days worked and set the site code.</p><div class="wiz-days">${DAY_NAMES.map((d, i) => {
-        const date = P.addDays(ws, i); const on = anyExisting ? date in existing : i < 5;
+      box.innerHTML = `<p class="muted small">Week starting Sunday ${longDate(ws)}. Tick days worked and set the site code.</p><div class="wiz-days">${SUN_NAMES.map((d, i) => {
+        const date = P.addDays(ws, i); const on = anyExisting ? date in existing : i >= 1 && i <= 5;
         return `<label class="check"><input type="checkbox" data-wd="${i}"${on ? ' checked' : ''}> ${d} ${shortDate(date)}</label><input data-ws="${i}" list="dl-sites" placeholder="Site code" value="${esc(existing[date] || cur.site || '')}">`;
       }).join('')}</div>`;
     } else box.innerHTML = `<input id="wizIn" type="${s.type || 'text'}" ${s.type === 'number' ? 'step="0.01"' : ''} ${s.list ? `list="${s.list}"` : ''} value="${esc(v)}" autocomplete="off">`;
@@ -1285,8 +1300,8 @@
     } else if (s.type === 'week') {
       cur.weekStart = wizWeek;
     } else if (s.type === 'days') {
-      const ws = cur.weekStart || lastMonday(); cur.weekStart = ws;
-      cur.items = DAY_NAMES.map((_, i) => i).filter(i => $(`[data-wd="${i}"]`).checked).map(i => ({
+      const ws = pickSun(cur.weekStart || lastMonday()); cur.weekStart = cur.weekStart || lastMonday();
+      cur.items = SUN_NAMES.map((_, i) => i).filter(i => $(`[data-wd="${i}"]`).checked).map(i => ({
         date: P.addDays(ws, i), site: $(`[data-ws="${i}"]`).value.toUpperCase(), label: cur.label || 'Labour', qty: 1, price: +cur.rate || 0, vat: cur.vatAll || 'none'
       }));
     } else {

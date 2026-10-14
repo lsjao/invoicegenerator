@@ -126,9 +126,9 @@ window.initDashboard = function () {
     const [y, m] = calMonth.split('-').map(Number);
     $('#calTitle').textContent = `${MONTHS[m - 1]} ${y}`;
     const first = new Date(y, m - 1, 1);
-    const start = new Date(y, m - 1, 1 - ((first.getDay() + 6) % 7));
+    const start = new Date(y, m - 1, 1 - first.getDay());   // weeks start on Sunday
     const max = Math.max(0, ...[...byDay.values()].filter(d => d.key.startsWith(calMonth)).map(d => d.gross));
-    let html = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<div class="dow">${d}</div>`).join('');
+    let html = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div class="dow">${d}</div>`).join('');
     for (let i = 0; i < 42; i++) {
       const d = new Date(start); d.setDate(start.getDate() + i);
       const key = iso(d), g = byDay.get(key), inMonth = d.getMonth() === m - 1;
@@ -138,7 +138,7 @@ window.initDashboard = function () {
       html += `<div class="cell${inMonth ? '' : ' out'}${lvl ? ' l' + lvl : ''}${calSel === key ? ' sel' : ''}" data-day="${key}"${tip ? ` data-tip="${esc(tip)}"` : ''}>
         <span class="d">${d.getDate()}</span>${g ? `<span>${g.subs.size} sub${g.subs.size > 1 ? 's' : ''}</span><span class="t">£${money(g.gross).replace(/\.00$/, '')}</span>` : ''}</div>`;
       if (i % 7 === 6) {
-        const mon = iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 6)), w = byWeek.get(mon);
+        const mon = iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 5)), w = byWeek.get(mon);   // the Monday of this Sunday-to-Saturday row
         if (w) html += `<div class="cell weekbar${calSel === 'w' + mon ? ' sel' : ''}" data-day="w${mon}" data-tip="${esc(`Week ${shortDate(mon)} – ${shortDate(P.addDays(mon, 6))}\nNo daily breakdown\n£${money(w.gross)} · ${+w.days.toFixed(1)} days\n${[...w.subs].join(', ')}`)}">
           <span><b>Whole week ${dm(mon)} – ${dm(P.addDays(mon, 6))}</b> · no daily breakdown</span><span>${w.subs.size} sub${w.subs.size > 1 ? 's' : ''} · ${+w.days.toFixed(1)} days</span><span class="t">£${money(w.gross)}</span></div>`;
       }

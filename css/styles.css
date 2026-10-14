@@ -456,3 +456,25 @@ table.data td.late { color: var(--danger); font-weight: 600; }
 .past-table .chips { margin: 0; }
 .past-skipped pre { white-space: pre-wrap; font-size: 12px; margin: 6px 0 0; color: var(--muted); }
 .past-undo { margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* Wider form editing */
+.layout.form-mode { grid-template-columns: minmax(0, 840px) minmax(300px, 1fr); }
+.layout.form-mode.wide-edit { grid-template-columns: minmax(0, 1fr); }
+.layout.form-mode.wide-edit .right { display: none; }
+@media (max-width: 960px) { .layout.form-mode, .layout.form-mode.wide-edit { grid-template-columns: 1fr; } }
+.wide-btn { margin-left: 8px; font-weight: 500; }
+.layout:not(.form-mode) .wide-btn { display: none; }
+table.items { table-layout: fixed; min-width: 740px; }
+table.items th:nth-child(1) { width: 158px; } table.items th:nth-child(2) { width: 104px; } table.items th:nth-child(3) { width: 132px; }
+table.items th:nth-child(4) { width: 72px; } table.items th:nth-child(5) { width: 92px; } table.items th:nth-child(6) { width: 108px; }
+table.items th:nth-child(7) { width: auto; } table.items th:nth-child(8) { width: 34px; }
+table.items td { padding: 4px 3px; }
+table.items td.w-date, table.items td.w-num { min-width: 0; width: auto; }
+table.items input, table.items select { padding: 6px 8px; text-overflow: ellipsis; }
+table.items td.amt { padding-right: 8px; }
+/* In full-width editing the columns share the extra space instead of leaving a gap */
+.layout.form-mode.wide-edit table.items { min-width: 900px; }
+.layout.form-mode.wide-edit table.items th:nth-child(1) { width: 15%; } .layout.form-mode.wide-edit table.items th:nth-child(2) { width: 12%; }
+.layout.form-mode.wide-edit table.items th:nth-child(3) { width: 24%; } .layout.form-mode.wide-edit table.items th:nth-child(4) { width: 8%; }
+.layout.form-mode.wide-edit table.items th:nth-child(5) { width: 12%; } .layout.form-mode.wide-edit table.items th:nth-child(6) { width: 13%; }
+.layout.form-mode.wide-edit table.items th:nth-child(7) { width: 12%; } .layout.form-mode.wide-edit table.items th:nth-child(8) { width: 4%; }
