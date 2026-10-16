@@ -206,6 +206,7 @@ Anna Kowal
         <button class="btn primary" id="addSub">+ New subcontractor</button>
       </div>
     </div>
+    <div id="unsavedSubsBanner" class="notice" hidden></div>
     <div class="quick-add">
       <label for="subPaste">Quick add from text</label>
       <textarea id="subPaste" rows="5" placeholder="Paste one or more subcontractors: name, address, account number, sort code, rate, phone, email. Leave a blank line between people."></textarea>
@@ -422,6 +423,28 @@ Anna Kowal
       <button type="button" class="btn ghost" data-close="cancel">Cancel</button>
       <button class="btn primary" value="ok">Save as paid</button>
     </div>
+  </form>
+</dialog>
+
+<dialog id="reviewDialog" class="modal wide review-dialog">
+  <form method="dialog">
+    <h3>Add names from your records</h3>
+    <p class="hint">These appear in your invoices and records but are not in your lists yet. Tick what to add, or merge a spelling into someone already saved.</p>
+    <div id="reviewBody"></div>
+    <div class="actions">
+      <button type="button" class="btn ghost" data-close="cancel">Close</button>
+      <button type="button" class="btn primary" id="reviewAdd">Add selected</button>
+    </div>
+    <button type="button" class="close" data-close="cancel" aria-label="Close">×</button>
+  </form>
+</dialog>
+
+<dialog id="dupDialog" class="modal">
+  <form method="dialog">
+    <h3>Already invoiced</h3>
+    <p id="dupText" style="margin:0 0 12px;font-size:14px;color:var(--ink)"></p>
+    <div id="dupChoices" class="dup-choices"></div>
+    <button type="button" class="close" data-close="cancel" aria-label="Close">×</button>
   </form>
 </dialog>
 

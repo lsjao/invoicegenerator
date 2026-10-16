@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v19 · 16 Oct 2026';
+  const APP_VERSION = 'v20 · 16 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -29,6 +29,19 @@
   const numOr = (v, d = 0) => (v !== '' && v != null && Number.isFinite(+v) ? +v : d);
   const VATS = ['none', '0', '5', '20'];
   const arr = v => (Array.isArray(v) ? v : []);
+  function cleanInvoice(i, depth = 0) {
+    const c = { ...i, id: safeId(i.id), legacy: !!i.legacy, batch: str(i.batch, 20), batchAt: str(i.batchAt, 40), template: 'modern', number: str(i.number, 40), currency: 'GBP',
+      date: isoOr(i.date) || todayISO(), due: isoOr(i.due), weekStart: isoOr(i.weekStart), paidDate: isoOr(i.paidDate), paid: !!i.paid, notTax: !!i.notTax, selected: !!i.selected, archived: !!i.archived,
+      createdAt: str(i.createdAt, 40), downloadedAt: i.downloadedAt ? str(i.downloadedAt, 40) : null, site: str(i.site, 20), label: str(i.label, 60), vatAll: VATS.includes(String(i.vatAll)) ? String(i.vatAll) : 'none',
+      rate: i.rate === '' || i.rate == null ? '' : numOr(i.rate),
+      from: { name: str(i.from?.name, 200), addr: str(i.from?.addr, 400), accName: str(i.from?.accName, 200), accNo: str(i.from?.accNo, 40), sort: str(i.from?.sort, 20) },
+      to: { name: str(i.to?.name, 200), addr: str(i.to?.addr, 400) },
+      items: arr(i.items).map(it => ({ ...(it.lump ? { lump: true } : {}), ...(ISO.test(it.week) ? { week: it.week } : {}), date: isoOr(it.date), site: str(it.site, 60), label: str(it.label, 60),
+        qty: numOr(it.qty, 1), price: numOr(it.price), vat: VATS.includes(String(it.vat)) ? String(it.vat) : 'none' })) };
+    if (depth === 0 && i.prev && typeof i.prev === 'object') c.prev = cleanInvoice(i.prev, 1);   // the version before a replace, so it can be undone
+    else delete c.prev;
+    return c;
+  }
   function clean(d) {
     const out = { ...d };
     out.clients = arr(d.clients).map(c => ({ id: safeId(c.id), name: str(c.name, 200), addr: str(c.addr, 400) }));
@@ -37,14 +50,7 @@
       phone: str(x.phone, 60), email: str(x.email, 200), notes: str(x.notes, 1000) }));
     out.sites = arr(d.sites).map(x => ({ code: str(x.code, 20), name: str(x.name, 200), area: str(x.area, 100), postcode: str(x.postcode, 20), aliases: arr(x.aliases).map(a => str(a, 100)) }));
     out.rates = arr(d.rates).map(r => numOr(r, NaN)).filter(Number.isFinite);
-    out.invoices = arr(d.invoices).map(i => ({ ...i, id: safeId(i.id), legacy: !!i.legacy, batch: str(i.batch, 20), template: 'modern', number: str(i.number, 40), currency: 'GBP',
-      date: isoOr(i.date) || todayISO(), due: isoOr(i.due), weekStart: isoOr(i.weekStart), paidDate: isoOr(i.paidDate), paid: !!i.paid, notTax: !!i.notTax, selected: !!i.selected, archived: !!i.archived,
-      createdAt: str(i.createdAt, 40), downloadedAt: i.downloadedAt ? str(i.downloadedAt, 40) : null, site: str(i.site, 20), label: str(i.label, 60), vatAll: VATS.includes(String(i.vatAll)) ? String(i.vatAll) : 'none',
-      rate: i.rate === '' || i.rate == null ? '' : numOr(i.rate),
-      from: { name: str(i.from?.name, 200), addr: str(i.from?.addr, 400), accName: str(i.from?.accName, 200), accNo: str(i.from?.accNo, 40), sort: str(i.from?.sort, 20) },
-      to: { name: str(i.to?.name, 200), addr: str(i.to?.addr, 400) },
-      items: arr(i.items).map(it => ({ ...(it.lump ? { lump: true } : {}), ...(ISO.test(it.week) ? { week: it.week } : {}), date: isoOr(it.date), site: str(it.site, 60), label: str(it.label, 60),
-        qty: numOr(it.qty, 1), price: numOr(it.price), vat: VATS.includes(String(it.vat)) ? String(it.vat) : 'none' })) }));
+    out.invoices = arr(d.invoices).map(i => cleanInvoice(i));
     const st = d.settings || {};
     out.settings = { ...st, prefix: str(st.prefix ?? 'INV-', 20), nextNo: Math.max(1, Math.floor(numOr(st.nextNo, 1))), vat: VATS.includes(String(st.vat)) ? String(st.vat) : 'none', template: 'modern',
       clientId: st.clientId ? safeId(st.clientId) : '', dlMode: st.dlMode === 'zip' ? 'zip' : 'separate', qStatus: ['all', 'paid', 'unpaid'].includes(st.qStatus) ? st.qStatus : 'all',
@@ -111,6 +117,14 @@
     const n = String(name || '').trim().toLowerCase();
     return n ? db.subs.find(s => s.name.trim().toLowerCase() === n) || db.subs.find(s => (s.aliases || []).some(a => a.trim().toLowerCase() === n)) : undefined;
   };
+  // Names and property codes resolve through saved aliases, so a spelling saved as "also known as" counts as the same person or property everywhere (dashboard, timesheet, duplicates).
+  const canonSub = n => { const x = findSub(n); return x ? x.name : String(n || '').trim(); };
+  const sameCode = (a, b) => String(a || '').trim().toUpperCase() === String(b || '').trim().toUpperCase();
+  const siteRecord = c => (String(c || '').trim() ? db.sites.find(x => x.code && (sameCode(x.code, c) || arr(x.aliases).some(al => sameCode(al, c)))) : null);
+  const canonSite = c => { const x = siteRecord(c); return x ? x.code : String(c || '').trim(); };
+  const siteKnown = c => !!siteRecord(c);
+  const blankSub = name => ({ id: uid(), name, addr: '', accName: name, accNo: '', sort: '', rate: '', vat: '', aliases: [], phone: '', email: '', notes: '' });
+  window.IM.canonSub = canonSub; window.IM.canonSite = canonSite;
   const fmtSort = s => { const d = String(s || '').replace(/\D/g, ''); return d.length === 6 ? d.replace(/(\d\d)(\d\d)(\d\d)/, '$1-$2-$3') : s; };
   // Calendars run Sunday to Saturday. A week is stored as the Monday that follows its Sunday (weekStart),
   // which is also the key for whole-week lines, so existing data keeps working.
@@ -413,16 +427,39 @@
   }
 
   // Several subcontractors in one paste: one invoice each
+  /* Days already invoiced: dated lines that already sit on another numbered invoice for the same subcontractor */
+  function overlapsFor(inv, skipId) {
+    const nm = canonSub(inv.from.name).toLowerCase(), dated = inv.items.filter(it => it.date), out = [];
+    if (!nm || !dated.length) return out;
+    db.invoices.forEach(ex => {
+      if (ex.id === skipId || ex.legacy || canonSub(ex.from.name).toLowerCase() !== nm) return;
+      const hit = dated.filter(it => ex.items.some(x => x.date === it.date));
+      if (hit.length) out.push({ inv: ex, dates: hit.map(it => it.date), all: hit.length === dated.length });
+    });
+    return out;
+  }
+  const ovDates = ov => new Set(ov.flatMap(o => o.dates));
+  const hasNewDays = (inv, ov) => inv.items.some(it => !it.date || !ovDates(ov).has(it.date));
+  const ovText = o => `${esc(o.inv.number)} already has ${o.dates.map(shortDate).join(', ')}`;
+
   function extractBatch(header, segments) {
     batch = segments.map(seg => {
       const inv = blankInvoice({ weekStart: cur.weekStart, to: cur.to, template: cur.template });
       const r = P.parse(header ? header + '\n' + seg : seg, db);
       applyParse(inv, r);
       inv._autoNumber = !r.number;
-      inv._include = !problems(inv).length;
+      inv._ov = overlapsFor(inv);
+      inv._ovAct = inv._ov.length ? (inv._ov.some(o => o.all) ? 'skip' : 'new') : '';   // never double-bill by default
+      inv._include = !problems(inv).length && inv._ovAct !== 'skip';
       return inv;
     });
     renderBatch();
+  }
+  function ovBox(inv) {
+    if (!inv._ov || !inv._ov.length) return '';
+    const b = (a, label, dis) => `<button type="button" data-bov="${a}" class="${inv._ovAct === a ? 'active' : ''}"${dis ? ' disabled' : ''}>${label}</button>`;
+    return `<div class="dup-box"><div class="dup-text"><span class="dup-badge exact">Already invoiced</span> ${inv._ov.map(ovText).join('; ')}</div>
+      <div class="seg dup-seg">${b('skip', 'Skip')}${b('new', 'Only new days', !hasNewDays(inv, inv._ov))}${b('all', 'Add anyway')}${b('replace', 'Replace ' + esc(inv._ov[0].inv.number))}</div></div>`;
   }
   function renderBatch() {
     const box = $('#extractResult');
@@ -440,6 +477,7 @@
           <div><b>${esc(inv.from.name || 'Unknown')}</b> ${formatPill(inv)}
             <div class="muted">${inv.items.length} line(s)${days.length ? ` · ${shortDate(days[0])}–${shortDate(days[days.length - 1])}` : ''} · £${money(t.total)}${inv.number && !inv._autoNumber ? ' · ' + esc(inv.number) : ''}</div>
             ${paidControl(inv, 'data-bpaid')}
+            ${ovBox(inv)}
             <div class="chips">${warnChips(inv)}${fixChips(inv)}${miss.filter(m => m !== 'Rate').map(m => `<span class="chip miss">${m}</span>`).join('')}</div>
             ${miss.includes('Rate') ? `<label class="inline-rate">Day rate £<input type="number" step="0.01" data-brate placeholder="e.g. 160"></label>` : ''}</div>
           <button class="btn small ghost" data-bact="edit">Edit</button>
@@ -513,25 +551,33 @@
       // Move this one into the form; the rest stay in the batch list
       const [inv] = batch.splice(+bi.dataset.bi, 1); selBatch = -1;
       cur = inv; editingId = null; numberTouched = !inv._autoNumber;
-      delete cur._include; delete cur._autoNumber; delete cur._fixes; delete cur._format; delete cur._warn;
+      delete cur._include; delete cur._autoNumber; delete cur._fixes; delete cur._format; delete cur._warn; delete cur._ov; delete cur._ovAct;
       fillForm(); onChange(); setMode('form'); renderBatch();
       return;
     }
     // Clicking a card (outside its controls) jumps the preview to that invoice
     if (bi && !e.target.closest('input, label, button, select')) { selectBatch(+bi.dataset.bi); return; }
+    const ob = e.target.closest('[data-bov]');
+    if (ob && bi && !ob.disabled) { const inv = batch[bi.dataset.bi]; inv._ovAct = ob.dataset.bov; inv._include = inv._ovAct !== 'skip' && !problems(inv).length; renderBatch(); return; }
     const mv = e.target.closest('#batchMode button');
     if (mv) { db.settings.dlMode = mv.dataset.v; save(); renderBatch(); return; }
     if (e.target.id === 'batchQueue' || e.target.id === 'batchDownload') {
       const picked = batch.filter(i => i._include && !problems(i).length);
-      const saved = picked.map(inv => {
-        if (inv._autoNumber) inv.number = numberFor(findSub(inv.from.name));
-        delete inv._include; delete inv._autoNumber; delete inv._fixes; delete inv._format; delete inv._warn;
-        return commit(inv, null);
+      const saved = []; let replaced = 0;
+      picked.forEach(inv => {
+        const ov = inv._ov || [];
+        if (inv._ovAct === 'new') { const ds = ovDates(ov); inv.items = inv.items.filter(it => !it.date || !ds.has(it.date)); if (!inv.items.length) return; }
+        let target = null;
+        if (inv._ovAct === 'replace' && ov[0]) {   // keep the original invoice number, replace its lines
+          target = ov[0].inv; inv.number = target.number; inv.paid = target.paid; if (target.paidDate) inv.paidDate = target.paidDate; replaced++;
+        } else if (inv._autoNumber) inv.number = numberFor(findSub(inv.from.name));
+        ['_include', '_autoNumber', '_fixes', '_format', '_warn', '_ov', '_ovAct'].forEach(k => delete inv[k]);
+        saved.push(commit(inv, target ? target.id : null));
       });
       batch = batch.filter(i => !picked.includes(i)); selBatch = -1;
       renderBatch();
       if (!batch.length) $('#pasteBox').value = '';
-      toast(`${saved.length} invoice(s) queued${batch.length ? ` · ${batch.length} left to fix` : ''}`);
+      toast(`${saved.length} invoice(s) queued${replaced ? ` (${replaced} replaced an earlier invoice, same number)` : ''}${batch.length ? ` · ${batch.length} left to fix` : ''}`);
       if (e.target.id === 'batchDownload') await downloadInvoices(saved, db.settings.dlMode);
     }
   });
@@ -539,80 +585,159 @@
   $('#pasteBox').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); extract(); } });
   $('#clearPaste').addEventListener('click', () => { $('#pasteBox').value = ''; $('#extractResult').hidden = true; batch = []; selBatch = -1; renderPreview(); });
 
-  /* ---------- Past invoices: records only. No invoice number is used and nothing existing is changed. ---------- */
-  let past = [], pastSkipped = [];
+  /* ---------- Past invoices: records only. No invoice number is used. Numbered invoices are never changed. ---------- */
+  let past = [], pastSkipped = [], pastNew = { subs: {}, sites: {} }, pastOnlyDup = false;
+  const nv = (kind, key) => (pastNew[kind][key] = pastNew[kind][key] || { include: true, name: '', area: '', postcode: '' });
+  const recLabel = inv => { const site = (inv.items.find(it => it.site) || {}).site; return `${esc(inv.number || 'Past record')} · ${shortDate(inv.date)} · £${money(totals(inv).total)}${site ? ' · ' + esc(canonSite(site)) : ''}`; };
+
+  // Existing invoices or records for the same person on the same date. "exact" also matches the amount and property.
+  function pastMatches(r) {
+    const nm = canonSub(r.name).toLowerCase(), site = canonSite(r.site).toLowerCase(), exact = [], similar = [];
+    for (const inv of db.invoices) {
+      if (canonSub(inv.from.name).toLowerCase() !== nm) continue;
+      if (!(inv.date === r.date || inv.items.some(it => it.date === r.date))) continue;
+      const sameAmt = Math.abs(totals(inv).total - r.amount) < 0.005;
+      const sameSite = !site || !inv.items.some(it => it.site) || inv.items.some(it => canonSite(it.site).toLowerCase() === site);
+      (sameAmt && sameSite ? exact : similar).push(inv);
+    }
+    return { exact, similar };
+  }
+
   function previewPast() {
     const { rows, skipped } = P.parsePastRecords($('#pastBox').value);
     pastSkipped = skipped;
-    const seen = new Set();
-    past = rows.map(r => {
+    const old = past, seen = new Map();
+    past = rows.map((r, idx) => {
       const sub = findSub(r.name), name = sub ? sub.name : r.name;
       const site = r.site ? P.resolveSite(r.site, db.sites) : { code: '', from: '', how: '' };
       const key = [name.toLowerCase(), r.date, site.code.toLowerCase(), r.amount.toFixed(2)].join('|');
-      const hit = db.invoices.find(i => i.from.name.toLowerCase() === name.toLowerCase() && Math.abs(totals(i).total - r.amount) < 0.005 && (i.date === r.date || i.items.some(it => it.date === r.date)));
-      const repeat = seen.has(key); seen.add(key);
+      const { exact, similar } = pastMatches({ name, date: r.date, amount: r.amount, site: site.code });
+      const first = seen.get(key); if (first === undefined) seen.set(key, idx);
+      const dup = exact.length ? 'exact' : first !== undefined ? 'repeat' : similar.length ? 'similar' : '';
+      const matches = exact.length ? exact : similar;
       // A spelling close to a saved subcontractor (Serghei / Sergej) is offered as a one-click match
       const maybe = sub ? null : db.subs.find(x => x.name.length >= 6 && name.length >= 6 && P.lev(x.name.toLowerCase(), name.toLowerCase()) <= 2) || null;
-      return { ...r, name, known: !!sub, maybe, site: site.code, fix: site, dupOf: hit ? (hit.number || 'a past record') : '', repeat, include: !hit && !repeat };
+      const keep = old[idx] && old[idx].key === key ? old[idx] : null;   // keep earlier choices when the paste is read again
+      return { ...r, name, known: !!sub, maybe, site: site.code, fix: site, key, dup, matches, repeatOf: first, target: matches.find(m => m.legacy) || null,
+        action: keep ? keep.action : (dup === 'exact' || dup === 'repeat') ? 'skip' : 'add', ref: keep ? keep.ref : r.ref };
     });
     renderPast();
   }
+
+  // Subcontractors and properties in the paste that are not saved yet (only for rows that will be added)
+  function pastNewItems() {
+    const subs = new Map(), sites = new Map();
+    past.forEach(r => {
+      if (r.action === 'skip') return;
+      if (!r.known && !r.maybe && r.name) { const k = r.name.toLowerCase(), g = subs.get(k) || { name: r.name, n: 0, total: 0 }; g.n++; g.total += r.amount; subs.set(k, g); }
+      if (r.site && !siteKnown(r.site)) { const k = r.site.toUpperCase(), g = sites.get(k) || { code: k, n: 0, total: 0 }; g.n++; g.total += r.amount; sites.set(k, g); }
+    });
+    return { subs: [...subs.values()], sites: [...sites.values()] };
+  }
+
   function renderPast() {
     const box = $('#pastResult');
     if (!past.length && !pastSkipped.length) { box.hidden = true; return; }
     box.hidden = false;
-    const n = past.filter(r => r.include).length, sum = past.filter(r => r.include).reduce((a, r) => a + r.amount, 0);
+    const nAdd = past.filter(r => r.action === 'add').length, nRep = past.filter(r => r.action === 'replace').length, nSkip = past.filter(r => r.action === 'skip').length;
+    const sum = past.filter(r => r.action !== 'skip').reduce((a, r) => a + r.amount, 0);
+    const dups = past.filter(r => r.dup), cnt = k => dups.filter(r => r.dup === k).length;
+    const nu = pastNewItems();
+    const nSaveSubs = nu.subs.filter(x => nv('subs', x.name.toLowerCase()).include).length, nSaveSites = nu.sites.filter(x => nv('sites', x.code).include).length;
     const chips = r => [
-      r.maybe ? `<button type="button" class="chip fix chip-btn" data-pmerge title="Use the saved name and remember this spelling for next time">Same as ${esc(r.maybe.name)}? Use</button>` : !r.known ? '<span class="chip warn" title="Not a saved subcontractor. The name is used as written. Add the spelling under Also known as to match a saved person.">Not saved</span>' : '',
-      !r.site ? '<span class="chip warn">No property</span>' : r.fix.how === 'unknown' ? `<span class="chip miss" title="Not a saved property">Unknown ${esc(r.fix.from)}</span>` : r.fix.how ? `<span class="chip fix" title="Corrected automatically">${esc(r.fix.from)} → ${esc(r.site)}</span>` : '',
-      r.dupOf ? `<span class="chip miss" title="Same subcontractor, amount and date already exists">Already recorded (${esc(r.dupOf)})</span>` : '',
-      r.repeat ? '<span class="chip miss">Repeated in this paste</span>' : ''
+      r.maybe ? `<button type="button" class="chip fix chip-btn" data-pmerge title="Use the saved name and remember this spelling for next time">Same as ${esc(r.maybe.name)}? Use</button>` : !r.known ? '<span class="chip warn" title="Not a saved subcontractor. Tick it under New in this paste to save it.">New subcontractor</span>' : '',
+      !r.site ? '<span class="chip warn">No property</span>' : r.fix.how === 'unknown' || (r.fix.how === '' && !siteKnown(r.site)) ? '<span class="chip warn" title="Not a saved property. Tick it under New in this paste to save it.">New property</span>' : r.fix.how ? `<span class="chip fix" title="Corrected automatically">${esc(r.fix.from)} → ${esc(r.site)}</span>` : ''
     ].join('');
+    const dupText = r => {
+      const m = r.matches[0], more = r.matches.length > 1 ? ` (+${r.matches.length - 1} more)` : '';
+      if (r.dup === 'exact') return `Exact match with ${recLabel(m)}${more}`;
+      if (r.dup === 'similar') return `Same person and date, different amount or property: ${recLabel(m)}${more}`;
+      return `Same as row ${r.repeatOf + 1} in this paste`;
+    };
+    const seg = (r, a, label, dis, tip) => `<button type="button" data-pact="${a}" class="${r.action === a ? 'active' : ''}"${dis ? ' disabled' : ''}${tip ? ` title="${tip}"` : ''}>${label}</button>`;
+    const dupBox = r => !r.dup ? '' : `<div class="dup-box"><div class="dup-text"><span class="dup-badge ${r.dup}">${r.dup === 'exact' ? 'Duplicate' : r.dup === 'similar' ? 'Check' : 'Repeat'}</span> ${dupText(r)}</div>
+      <div class="seg dup-seg">${seg(r, 'skip', r.dup === 'repeat' ? 'Skip this row' : 'Keep existing')}${seg(r, 'add', r.dup === 'repeat' ? 'Add anyway' : 'Keep both')}${r.dup === 'repeat' ? '' : seg(r, 'replace', 'Replace', !r.target, r.target ? 'Replace that past record with this row' : 'Numbered invoices are never replaced')}</div></div>`;
+    const dupBanner = !dups.length ? '' : `<div class="dup-banner">
+      <div><b>⚠ ${dups.length} possible duplicate${dups.length === 1 ? '' : 's'}</b> <span class="muted small">${[cnt('exact') ? cnt('exact') + ' exact' : '', cnt('similar') ? cnt('similar') + ' to check' : '', cnt('repeat') ? cnt('repeat') + ' repeated in this paste' : ''].filter(Boolean).join(' · ')}</span></div>
+      <div class="muted small">For each one choose Keep existing, Keep both or Replace. Exact matches start as Keep existing, so nothing is added twice by accident.</div>
+      <div class="row gap"><button type="button" class="btn small" data-pbulk="skip">Keep existing for all</button><button type="button" class="btn small" data-pbulk="add">Keep both for all</button><button type="button" class="btn small" data-pbulk="replace">Replace where possible</button>
+        <label class="check"><input type="checkbox" id="pastOnlyDup"${pastOnlyDup ? ' checked' : ''}> Show only duplicates</label></div></div>`;
+    const newPanel = !(nu.subs.length || nu.sites.length) ? '' : `<div class="past-new">
+      <div class="past-new-head"><b>New in this paste</b> <span class="muted small">Tick what to save to your lists when you add the records. Property details are optional and can be filled in later.</span></div>
+      ${nu.subs.length ? `<div class="past-new-block"><div class="small muted">Subcontractors (${nu.subs.length})</div><div class="pn-chips">${nu.subs.map(x => { const k = x.name.toLowerCase(); return `<label class="pn-chip"><input type="checkbox" data-pnsub="${esc(k)}"${nv('subs', k).include ? ' checked' : ''}> ${esc(x.name)} <small>${x.n}× · £${money(x.total)}</small></label>`; }).join('')}</div></div>` : ''}
+      ${nu.sites.length ? `<div class="past-new-block"><div class="small muted">Properties (${nu.sites.length})</div>${nu.sites.map(x => { const st = nv('sites', x.code); return `<div class="pn-site" data-pnk="${esc(x.code)}"><label class="check"><input type="checkbox" data-pnsite${st.include ? ' checked' : ''}> <b>${esc(x.code)}</b> <small>${x.n}× · £${money(x.total)}</small></label><input data-pnf="name" placeholder="First line, e.g. 26A Lawford Road" value="${esc(st.name)}"><input data-pnf="area" placeholder="Area" value="${esc(st.area)}"><input data-pnf="postcode" placeholder="Postcode" value="${esc(st.postcode)}"></div>`; }).join('')}</div>` : ''}</div>`;
     box.innerHTML = `
-      <div class="small muted">${past.length} record(s) found${pastSkipped.length ? ` · ${pastSkipped.length} line(s) not understood` : ''}. Rows that look like existing entries are switched off.</div>
+      <div class="small muted">${past.length} record(s) found${pastSkipped.length ? ` · ${pastSkipped.length} line(s) not understood` : ''}.</div>
+      ${dupBanner}${newPanel}
       <div class="table-wrap"><table class="data past-table">
-        <thead><tr><th><input type="checkbox" id="pastAll"${past.length && past.every(r => r.include) ? ' checked' : ''} aria-label="Select all"></th><th>Date</th><th>Subcontractor</th><th>Property</th><th class="r">Amount</th><th>Reference (optional)</th><th>Check</th></tr></thead>
-        <tbody>${past.map((r, i) => `<tr data-pi="${i}" class="${r.include ? '' : 'off'}">
-          <td><input type="checkbox" data-pinc${r.include ? ' checked' : ''}></td><td>${shortDate(r.date)}</td><td>${esc(r.name)}</td><td>${esc(r.site)}</td><td class="r">£${money(r.amount)}</td>
-          <td><input data-pref value="${esc(r.ref)}" placeholder="none" size="10"></td><td><div class="chips">${chips(r)}</div></td></tr>`).join('')}</tbody></table></div>
+        <thead><tr><th><input type="checkbox" id="pastAll"${past.length && past.every(r => r.action !== 'skip') ? ' checked' : ''} aria-label="Select all"></th><th>Date</th><th>Subcontractor</th><th>Property</th><th class="r">Amount</th><th>Reference (optional)</th><th>Check</th></tr></thead>
+        <tbody>${past.map((r, i) => `<tr data-pi="${i}" class="${r.action === 'skip' ? 'off' : ''}${r.dup ? ' dup dup-' + r.dup : ''}"${pastOnlyDup && !r.dup ? ' hidden' : ''}>
+          <td><input type="checkbox" data-pinc${r.action !== 'skip' ? ' checked' : ''}></td><td>${shortDate(r.date)}</td><td>${esc(r.name)}</td><td>${esc(r.site)}</td><td class="r">£${money(r.amount)}</td>
+          <td><input data-pref value="${esc(r.ref)}" placeholder="none" size="10"></td><td><div class="chips">${chips(r)}</div>${dupBox(r)}</td></tr>`).join('')}</tbody></table></div>
       ${pastSkipped.length ? `<details class="past-skipped"><summary>${pastSkipped.length} line(s) not understood</summary><pre>${esc(pastSkipped.join('\n'))}</pre></details>` : ''}
-      <div class="batch-bar"><span class="muted small">${n} selected · £${money(sum)} · numbering stays at ${esc(numberFor())}</span>
-        <button class="btn primary" id="pastAdd"${n ? '' : ' disabled'}>Add ${n} past record${n === 1 ? '' : 's'}</button></div>`;
+      <div class="batch-bar"><span class="muted small">${nAdd} to add${nRep ? ` · ${nRep} to replace` : ''}${nSkip ? ` · ${nSkip} skipped` : ''} · £${money(sum)} · numbering stays at ${esc(numberFor())}${nSaveSubs || nSaveSites ? ` · also saves ${[nSaveSubs ? nSaveSubs + ' subcontractor' + (nSaveSubs === 1 ? '' : 's') : '', nSaveSites ? nSaveSites + ' propert' + (nSaveSites === 1 ? 'y' : 'ies') : ''].filter(Boolean).join(' and ')}` : ''}</span>
+        <button class="btn primary" id="pastAdd"${nAdd + nRep ? '' : ' disabled'}>${nRep ? `Add ${nAdd}, replace ${nRep}` : `Add ${nAdd} past record${nAdd === 1 ? '' : 's'}`}</button></div>`;
   }
-  const pastBatches = () => { const g = {}; db.invoices.filter(i => i.legacy && i.batch).forEach(i => { (g[i.batch] = g[i.batch] || []).push(i); }); return Object.values(g).sort((a, b) => (b[0].createdAt || '').localeCompare(a[0].createdAt || '')); };
+  const pastBatches = () => { const g = {}; db.invoices.filter(i => i.legacy && i.batch).forEach(i => { (g[i.batch] = g[i.batch] || []).push(i); }); return Object.values(g).sort((a, b) => (b[0].batchAt || b[0].createdAt || '').localeCompare(a[0].batchAt || a[0].createdAt || '')); };
   function renderPastUndo() {
     const box = $('#pastUndo'), last = pastBatches()[0];
     box.hidden = !last;
-    if (last) box.innerHTML = `<span class="small muted">Last import: ${last.length} record(s), £${money(last.reduce((a, i) => a + totals(i).total, 0))}</span> <button class="btn small ghost danger" id="pastUndoBtn">Undo that import</button>`;
+    if (last) { const reps = last.filter(i => i.prev).length; box.innerHTML = `<span class="small muted">Last import: ${last.length - reps} added${reps ? `, ${reps} replaced` : ''}, £${money(last.reduce((a, i) => a + totals(i).total, 0))}</span> <button class="btn small ghost danger" id="pastUndoBtn">Undo that import</button>`; }
+  }
+  function makePastRecord(r, ref, client, paid, batchId, at) {
+    const sub = findSub(r.name);
+    return { id: uid(), legacy: true, batch: batchId, batchAt: at, template: 'modern', number: str(ref, 40), date: r.date, due: '', weekStart: P.mondayOf(r.date), site: '', rate: '', label: 'Labour', vatAll: 'none',
+      from: sub ? { name: sub.name, addr: sub.addr || '', accName: sub.accName || sub.name, accNo: sub.accNo || '', sort: sub.sort || '' } : { name: r.name, addr: '', accName: r.name, accNo: '', sort: '' },
+      to: { name: client.name, addr: client.addr }, items: [{ date: '', site: r.site, label: 'Labour', qty: 1, price: r.amount, vat: 'none', lump: true }],
+      notTax: false, currency: 'GBP', paid, ...(paid ? { paidDate: r.date } : {}), createdAt: at, downloadedAt: null, selected: false, archived: true };
   }
   function addPast() {
-    const picked = past.filter(r => r.include);
-    if (!picked.length) return toast('Nothing selected');
+    const todo = past.filter(r => r.action !== 'skip');
+    if (!todo.length) return toast('Nothing selected');
     const id = uid(), at = new Date().toISOString(), paid = $('#pastPaid').checked;
     const client = db.clients.find(c => c.id === $('#pastClient').value) || db.clients[0] || { name: '', addr: '' };
-    const refs = $$('#pastResult [data-pref]').map(el => el.value.trim());
-    picked.forEach(r => {
-      const sub = findSub(r.name), idx = past.indexOf(r);
-      db.invoices.push({ id: uid(), legacy: true, batch: id, template: 'modern', number: str(refs[idx] ?? r.ref, 40), date: r.date, due: '', weekStart: P.mondayOf(r.date), site: '', rate: '', label: 'Labour', vatAll: 'none',
-        from: sub ? { name: sub.name, addr: sub.addr || '', accName: sub.accName || sub.name, accNo: sub.accNo || '', sort: sub.sort || '' } : { name: r.name, addr: '', accName: r.name, accNo: '', sort: '' },
-        to: { name: client.name, addr: client.addr }, items: [{ date: '', site: r.site, label: 'Labour', qty: 1, price: r.amount, vat: 'none', lump: true }],
-        notTax: false, currency: 'GBP', paid, ...(paid ? { paidDate: r.date } : {}), createdAt: at, downloadedAt: null, selected: false, archived: true });
+    // 1) save the ticked new subcontractors and properties first, so the records point at saved entries
+    const nu = pastNewItems(); let nSub = 0, nSite = 0;
+    nu.subs.forEach(x => { if (nv('subs', x.name.toLowerCase()).include && !findSub(x.name)) { db.subs.push(blankSub(x.name)); nSub++; } });
+    nu.sites.forEach(x => { const st = nv('sites', x.code); if (st.include && !siteKnown(x.code)) { db.sites.push({ code: x.code, name: str(st.name, 200).trim(), area: str(st.area, 100).trim(), postcode: str(st.postcode, 20).trim(), aliases: [] }); nSite++; } });
+    // 2) the records: add new ones, or replace a past record (its earlier version is kept so the import can be undone)
+    let added = 0, replaced = 0; const touched = new Set();
+    todo.forEach(r => {
+      const rec = makePastRecord(r, r.ref, client, paid, id, at);
+      if (r.action === 'replace' && r.target && !touched.has(r.target.id)) {
+        const t = r.target, before = JSON.parse(JSON.stringify(t)); delete before.prev; touched.add(t.id);
+        Object.keys(t).forEach(k => delete t[k]);
+        Object.assign(t, rec, { id: before.id, createdAt: before.createdAt, number: str(r.ref, 40) || before.number, prev: before });
+        replaced++;
+      } else { db.invoices.push(rec); added++; }
     });
-    saveNow(); updateBadge();
-    $('#pastBox').value = ''; past = []; pastSkipped = []; renderPast(); renderPastUndo();
-    toast(`${picked.length} past record(s) added. Invoice numbering unchanged (next ${numberFor()}).`, 6000);
+    pastNew = { subs: {}, sites: {} };
+    saveNow(); updateBadge(); fillSelects();
+    $('#pastBox').value = ''; past = []; pastSkipped = []; renderPast(); renderPastUndo(); renderUnsaved();
+    toast(`${added ? added + ' past record(s) added' : ''}${added && replaced ? ', ' : ''}${replaced ? replaced + ' replaced' : ''}${nSub || nSite ? ` · saved ${[nSub ? nSub + ' subcontractor(s)' : '', nSite ? nSite + ' propert' + (nSite === 1 ? 'y' : 'ies') : ''].filter(Boolean).join(' and ')}` : ''}. Numbering unchanged (next ${numberFor()}).`, 7000);
   }
   $('#pastParse').addEventListener('click', () => ($('#pastBox').value.trim() ? previewPast() : toast('Paste some past invoices first')));
   $('#pastBox').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); previewPast(); } });
-  $('#pastClear').addEventListener('click', () => { $('#pastBox').value = ''; past = []; pastSkipped = []; renderPast(); });
+  $('#pastClear').addEventListener('click', () => { $('#pastBox').value = ''; past = []; pastSkipped = []; pastNew = { subs: {}, sites: {} }; renderPast(); });
   $('#pastResult').addEventListener('change', e => {
     const t = e.target;
-    if (t.id === 'pastAll') { past.forEach(r => (r.include = t.checked)); return renderPast(); }
-    if (t.hasAttribute('data-pinc')) { past[t.closest('[data-pi]').dataset.pi].include = t.checked; renderPast(); }
+    if (t.id === 'pastAll') { past.forEach(r => (r.action = t.checked ? (r.action === 'skip' ? 'add' : r.action) : 'skip')); return renderPast(); }
+    if (t.id === 'pastOnlyDup') { pastOnlyDup = t.checked; return renderPast(); }
+    if (t.hasAttribute('data-pinc')) { const r = past[t.closest('[data-pi]').dataset.pi]; r.action = t.checked ? 'add' : 'skip'; return renderPast(); }
+    if (t.hasAttribute('data-pnsub')) { nv('subs', t.dataset.pnsub).include = t.checked; return renderPast(); }
+    if (t.hasAttribute('data-pnsite')) { nv('sites', t.closest('[data-pnk]').dataset.pnk).include = t.checked; renderPast(); }
   });
-  $('#pastResult').addEventListener('input', e => { if (e.target.hasAttribute('data-pref')) past[e.target.closest('[data-pi]').dataset.pi].ref = e.target.value; });
+  $('#pastResult').addEventListener('input', e => {
+    const t = e.target;
+    if (t.hasAttribute('data-pref')) past[t.closest('[data-pi]').dataset.pi].ref = t.value;
+    else if (t.hasAttribute('data-pnf')) nv('sites', t.closest('[data-pnk]').dataset.pnk)[t.dataset.pnf] = t.value;
+  });
   $('#pastResult').addEventListener('click', e => {
     if (e.target.id === 'pastAdd') return addPast();
+    const act = e.target.closest('[data-pact]');
+    if (act && !act.disabled) { past[act.closest('[data-pi]').dataset.pi].action = act.dataset.pact; return renderPast(); }
+    const bulk = e.target.closest('[data-pbulk]');
+    if (bulk) { past.forEach(r => { if (r.dup && (bulk.dataset.pbulk !== 'replace' || r.target) && !(bulk.dataset.pbulk === 'replace' && r.dup === 'repeat')) r.action = bulk.dataset.pbulk; }); return renderPast(); }
     const m = e.target.closest('[data-pmerge]');
     if (m) {   // remember the spelling on the saved subcontractor, then re-read the paste so every matching row resolves
       const r = past[m.closest('[data-pi]').dataset.pi], sub = r.maybe, written = r.name;
@@ -625,8 +750,75 @@
   $('#pastUndo').addEventListener('click', async e => {
     if (e.target.id !== 'pastUndoBtn') return;
     const last = pastBatches()[0]; if (!last) return;
-    if (!(await ask(`Remove the ${last.length} past record(s) from the last import? Your other invoices are not touched.`, 'Undo import'))) return;
-    deleteInvoices(last); renderPastUndo();
+    const reps = last.filter(i => i.prev), adds = last.filter(i => !i.prev);
+    if (!(await ask(`Undo the last import? ${adds.length} added record(s) are removed${reps.length ? ` and ${reps.length} replaced record(s) are put back` : ''}. Your other invoices are not touched.`, 'Undo import'))) return;
+    reps.forEach(i => { const before = cleanInvoice(i.prev); Object.keys(i).forEach(k => delete i[k]); Object.assign(i, before); });
+    if (adds.length) deleteInvoices(adds); else { saveNow(); renderQueue(); }
+    renderPastUndo(); renderUnsaved();
+    toast('Import undone');
+  });
+
+  /* ---------- Names and properties used in records but not saved in your lists ---------- */
+  const lev2 = (a, b) => P.lev(String(a).toLowerCase(), String(b).toLowerCase());
+  function unsavedSubs() {
+    const m = new Map();
+    db.invoices.forEach(i => {
+      const n = String(i.from.name || '').trim(); if (!n || findSub(n)) return;
+      const k = n.toLowerCase(), g = m.get(k) || { name: n, n: 0, total: 0, maybe: db.subs.find(x => x.name.length >= 6 && n.length >= 6 && lev2(x.name, n) <= 2) || null };
+      g.n++; g.total += totals(i).total; m.set(k, g);
+    });
+    return [...m.values()].sort((a, b) => b.total - a.total);
+  }
+  function unsavedSites() {
+    const m = new Map();
+    db.invoices.forEach(i => i.items.forEach(it => {
+      const c = String(it.site || '').trim(); if (!c || siteKnown(c)) return;
+      const k = c.toUpperCase(), g = m.get(k) || { code: k, n: 0, total: 0, maybe: db.sites.find(x => x.code && x.code.length >= 3 && lev2(x.code, c) <= 1) || null };
+      g.n++; g.total += (+it.qty || 0) * (+it.price || 0); m.set(k, g);
+    }));
+    return [...m.values()].sort((a, b) => b.total - a.total);
+  }
+  function renderUnsaved() {
+    const us = unsavedSubs().length, ut = unsavedSites().length;
+    const fill = (el, n, noun) => { if (!el) return; el.hidden = !n; el.innerHTML = n ? `<span><b>${n}</b> ${noun}${n === 1 ? ' is' : 's are'} used in your invoices but not saved yet.</span> <button type="button" class="btn small primary" data-review>Review and add</button>` : ''; };
+    fill($('#unsavedSubsBanner'), us, 'subcontractor name');
+    fill($('#unsavedSitesBanner'), ut, 'property code');
+  }
+  let rv = { subs: {}, sites: {} };
+  const rvSub = k => (rv.subs[k] = rv.subs[k] || { include: true });
+  const rvSite = k => (rv.sites[k] = rv.sites[k] || { include: true, name: '', area: '', postcode: '' });
+  function renderReview() {
+    const us = unsavedSubs(), ut = unsavedSites();
+    $('#reviewBody').innerHTML = (!us.length && !ut.length) ? '<p class="muted">Everything used in your invoices and records is already saved.</p>' : `
+      ${us.length ? `<h4>Subcontractors (${us.length})</h4><p class="muted small">Tick the ones to add. Bank details and rates can be filled in later under Subcontractors. If a spelling is the same person as someone saved, merge it instead.</p>
+        <div class="table-wrap"><table class="data review-table"><thead><tr><th></th><th>Name in your records</th><th class="r">Records</th><th class="r">Total</th><th></th></tr></thead><tbody>${us.map(x => { const k = x.name.toLowerCase(); return `<tr data-rk="${esc(k)}"><td><input type="checkbox" data-rsub${rvSub(k).include ? ' checked' : ''}></td><td>${esc(x.name)}</td><td class="r">${x.n}</td><td class="r">£${money(x.total)}</td><td>${x.maybe ? `<button type="button" class="chip fix chip-btn" data-rmerge-sub="${esc(k)}">Same as ${esc(x.maybe.name)}? Merge</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : ''}
+      ${ut.length ? `<h4>Properties (${ut.length})</h4><p class="muted small">Add the address if you have it. It is only used for labels and the dashboard.</p>
+        <div class="table-wrap"><table class="data review-table"><thead><tr><th></th><th>Code</th><th class="r">Lines</th><th class="r">Total</th><th>First line</th><th>Area</th><th>Postcode</th><th></th></tr></thead><tbody>${ut.map(x => { const st = rvSite(x.code); return `<tr data-rc="${esc(x.code)}"><td><input type="checkbox" data-rsite${st.include ? ' checked' : ''}></td><td><b>${esc(x.code)}</b></td><td class="r">${x.n}</td><td class="r">£${money(x.total)}</td><td><input data-rf="name" value="${esc(st.name)}" placeholder="e.g. 26A Lawford Road"></td><td><input data-rf="area" value="${esc(st.area)}" placeholder="Area"></td><td><input data-rf="postcode" value="${esc(st.postcode)}" placeholder="Postcode"></td><td>${x.maybe ? `<button type="button" class="chip fix chip-btn" data-rmerge-site="${esc(x.code)}">Same as ${esc(x.maybe.code)}? Merge</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : ''}`;
+    const n = us.filter(x => rvSub(x.name.toLowerCase()).include).length + ut.filter(x => rvSite(x.code).include).length;
+    $('#reviewAdd').disabled = !n; $('#reviewAdd').textContent = n ? `Add ${n} selected` : 'Add selected';
+  }
+  function openReview() { rv = { subs: {}, sites: {} }; renderReview(); $('#reviewDialog').showModal(); }
+  function afterListChange() { fillSelects(); renderUnsaved(); renderSubs(); if (!$('[data-view="settings"]').hidden && setTab === 'sites') renderSettings(); if (!$('[data-view="dash"]').hidden && window.Dashboard) window.Dashboard.render(); }
+  document.addEventListener('click', e => { if (e.target.closest('[data-review]')) openReview(); });
+  $('#reviewBody').addEventListener('change', e => {
+    const t = e.target;
+    if (t.hasAttribute('data-rsub')) rvSub(t.closest('[data-rk]').dataset.rk).include = t.checked;
+    else if (t.hasAttribute('data-rsite')) rvSite(t.closest('[data-rc]').dataset.rc).include = t.checked;
+    renderReview();
+  });
+  $('#reviewBody').addEventListener('input', e => { const t = e.target; if (t.hasAttribute('data-rf')) rvSite(t.closest('[data-rc]').dataset.rc)[t.dataset.rf] = t.value; });
+  $('#reviewBody').addEventListener('click', e => {
+    const ms = e.target.closest('[data-rmerge-sub]'), mc = e.target.closest('[data-rmerge-site]');
+    if (ms) { const x = unsavedSubs().find(u => u.name.toLowerCase() === ms.dataset.rmergeSub); if (x && x.maybe) { x.maybe.aliases = [...new Set([...(x.maybe.aliases || []), x.name])]; saveNow(); toast(`${x.name} is now also known as ${x.maybe.name}`, 4000); afterListChange(); renderReview(); } }
+    if (mc) { const x = unsavedSites().find(u => u.code === mc.dataset.rmergeSite); if (x && x.maybe) { x.maybe.aliases = [...new Set([...(x.maybe.aliases || []), x.code])]; saveNow(); toast(`${x.code} is now also known as ${x.maybe.code}`, 4000); afterListChange(); renderReview(); } }
+  });
+  $('#reviewAdd').addEventListener('click', () => {
+    let nS = 0, nP = 0;
+    unsavedSubs().forEach(x => { if (rvSub(x.name.toLowerCase()).include && !findSub(x.name)) { db.subs.push(blankSub(x.name)); nS++; } });
+    unsavedSites().forEach(x => { const st = rvSite(x.code); if (st.include && !siteKnown(x.code)) { db.sites.push({ code: x.code, name: str(st.name, 200).trim(), area: str(st.area, 100).trim(), postcode: str(st.postcode, 20).trim(), aliases: [] }); nP++; } });
+    saveNow(); afterListChange();
+    toast(`Added ${[nS ? nS + ' subcontractor' + (nS === 1 ? '' : 's') : '', nP ? nP + ' propert' + (nP === 1 ? 'y' : 'ies') : ''].filter(Boolean).join(' and ')}`, 5000);
+    if (!unsavedSubs().length && !unsavedSites().length) $('#reviewDialog').close(); else renderReview();
   });
 
   /* ---------- Preview ---------- */
@@ -709,6 +901,7 @@
     if (!cur.to.name) warn.push('Bill-to company empty');
     const dup = !cur.legacy && db.invoices.find(i => !i.legacy && i.number === cur.number && i.from.name === cur.from.name && i.id !== editingId);
     if (dup) warn.push(`Reference ${cur.number} already used for ${cur.from.name}`);
+    if (!cur.legacy) overlapsFor(cur, editingId).forEach(o => warn.push(`Days already invoiced on ${o.inv.number}: ${o.dates.map(shortDate).join(', ')}`));
     const bad = problems(cur);
     $('#checkList').innerHTML = [
       `<div class="ok">${esc(cur.from.name || '?')} → ${esc(cur.to.name || '?')}</div>`,
@@ -744,7 +937,7 @@
   function commit(src, editingId) {
     const inv = JSON.parse(JSON.stringify(src));
     inv.items.forEach(it => delete it._priceSet);
-    delete inv._fixes; delete inv._format; delete inv._warn;
+    delete inv._fixes; delete inv._format; delete inv._warn; delete inv._ov; delete inv._ovAct;
     if (!inv.legacy) remember(inv);   // past records never move the number sequence or add rates/sites
     if (editingId) {
       const i = db.invoices.findIndex(x => x.id === editingId);
@@ -758,10 +951,33 @@
     saveNow(); updateBadge();
     return inv;
   }
-  $('#addToQueue').addEventListener('click', () => {
+  // Ask what to do when days on this invoice are already on another numbered invoice
+  function dupChoice(inv, ov) {
+    const d = $('#dupDialog');
+    $('#dupText').innerHTML = `${esc(inv.from.name)}: ${ov.map(ovText).join('; ')}. Adding it again would bill those days twice.`;
+    $('#dupChoices').innerHTML = [
+      ['cancel', 'Don’t add', 'btn ghost'],
+      hasNewDays(inv, ov) ? ['new', 'Add only the new days', 'btn primary'] : null,
+      ['all', 'Add as a new invoice anyway', 'btn'],
+      ['replace', `Replace ${esc(ov[0].inv.number)} (keeps its number)`, 'btn']
+    ].filter(Boolean).map(([v, l, c]) => `<button type="button" class="${c}" data-close="${v}">${l}</button>`).join('');
+    d.returnValue = ''; d.showModal();
+    return new Promise(res => { d.onclose = () => res(d.returnValue || 'cancel'); });
+  }
+  $('#addToQueue').addEventListener('click', async () => {
+    let replacing = false;
+    if (!cur.legacy) {
+      const ov = overlapsFor(cur, editingId);
+      if (ov.length) {
+        const choice = await dupChoice(cur, ov);
+        if (choice === 'cancel') return;
+        if (choice === 'new') { const ds = ovDates(ov); cur.items = cur.items.filter(it => !it.date || !ds.has(it.date)); if (!cur.items.length) return toast('Every day was already invoiced, so nothing was added'); }
+        if (choice === 'replace') { const t = ov[0].inv; editingId = t.id; cur.number = t.number; numberTouched = true; cur.paid = t.paid; if (t.paidDate) cur.paidDate = t.paidDate; replacing = true; }
+      }
+    }
     const wasEditing = editingId;
     const inv = commitCurrent(); if (!inv) return;
-    toast(`${inv.number} for ${inv.from.name} ${wasEditing ? 'updated' : 'queued'}`);
+    toast(`${inv.number} for ${inv.from.name} ${wasEditing ? (replacing ? 'replaced (same number)' : 'updated') : 'queued'}`);
     resetCurrent(); setMode('paste');
     if (batch.length) { renderBatch(); toast(`${inv.number} queued · ${batch.length} more from your paste below`); }
     else { $('#pasteBox').value = ''; $('#extractResult').hidden = true; }
@@ -939,10 +1155,11 @@
 
   /* ---------- Subcontractors tab ---------- */
   function subStats(sub) {
-    const inv = db.invoices.filter(i => i.from.name.toLowerCase() === sub.name.toLowerCase());
+    const inv = db.invoices.filter(i => canonSub(i.from.name).toLowerCase() === sub.name.toLowerCase());
     return { count: inv.length, total: inv.reduce((s, i) => s + totals(i).total, 0), owed: inv.filter(i => !i.paid).reduce((s, i) => s + totals(i).total, 0), days: inv.reduce((s, i) => s + i.items.reduce((a, it) => a + (+it.qty || 0), 0), 0) };
   }
   function renderSubs() {
+    renderUnsaved();
     const q = $('#subSearch').value.trim().toLowerCase();
     const list = db.subs.filter(s => !q || JSON.stringify(s).toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
     $('#subList').innerHTML = list.map(s => {
@@ -1096,8 +1313,9 @@
         window.IM.db.clients = db.clients; save(); renderSettings(); fillSelects();
       };
     } else if (setTab === 'sites') {
-      b.innerHTML = `<p class="hint">Site codes used on invoice lines. Pasted references are matched to these by code, property name or an “also typed as” spelling, and codes one letter off are corrected (a typo like 5CF is fixed to 5CD when 5CD is saved).</p><div class="set-row site-row set-head"><small>Code</small><small>First line</small><small>Area</small><small>Postcode</small><small>Also typed as</small><span></span></div>` + db.sites.map((s, i) => `
+      b.innerHTML = `<div id="unsavedSitesBanner" class="notice" hidden></div><p class="hint">Site codes used on invoice lines. Pasted references are matched to these by code, property name or an “also typed as” spelling, and codes one letter off are corrected (a typo like 5CF is fixed to 5CD when 5CD is saved).</p><div class="set-row site-row set-head"><small>Code</small><small>First line</small><small>Area</small><small>Postcode</small><small>Also typed as</small><span></span></div>` + db.sites.map((s, i) => `
         <div class="set-row site-row" data-i="${i}"><input data-sf="code" value="${esc(s.code)}"><input data-sf="name" value="${esc(s.name || '')}" placeholder="First line"><input data-sf="area" value="${esc(s.area || '')}" placeholder="Area"><input data-sf="postcode" value="${esc(s.postcode || '')}" placeholder="Postcode"><input data-sf="aliases" value="${esc((s.aliases || []).join(', '))}" placeholder="Also typed as, e.g. 5CF"><button class="x" data-sdel>×</button></div>`).join('') + `<button class="btn small" id="addSite">+ Add site</button>`;
+      renderUnsaved();
       $('#addSite').onclick = () => { db.sites.push({ code: '', name: '' }); renderSettings(); };
       b.oninput = e => { const f = e.target.dataset.sf; if (!f) return; db.sites[e.target.closest('.set-row').dataset.i][f] = f === 'code' ? e.target.value.toUpperCase() : f === 'aliases' ? e.target.value.split(',').map(x => x.trim()).filter(Boolean) : e.target.value; save(); fillSelects(); };
       b.onclick = e => { if (e.target.hasAttribute('data-sdel')) { db.sites.splice(e.target.closest('.set-row').dataset.i, 1); save(); renderSettings(); fillSelects(); } };

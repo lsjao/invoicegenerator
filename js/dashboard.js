@@ -15,7 +15,7 @@ window.initDashboard = function () {
       for (const it of inv.items) {
         const net = (+it.qty || 0) * (+it.price || 0);
         const vat = it.vat !== 'none' && +it.vat > 0 ? net * +it.vat / 100 : 0;
-        rows.push({ inv, it, date: it.date || it.week || inv.date, isWeek: !it.date && !!it.week, sub: inv.from.name || '(unnamed)', site: it.site || '(no site)', qty: +it.qty || 0, days: it.lump ? 0 : (+it.qty || 0), net, vat, gross: net + vat });
+        rows.push({ inv, it, date: it.date || it.week || inv.date, isWeek: !it.date && !!it.week, sub: window.IM.canonSub(inv.from.name) || '(unnamed)', site: window.IM.canonSite(it.site) || '(no site)', qty: +it.qty || 0, days: it.lump ? 0 : (+it.qty || 0), net, vat, gross: net + vat });
       }
     }
     return rows;
@@ -164,12 +164,12 @@ window.initDashboard = function () {
   // Unpaid invoices, oldest first, regardless of the period filter so nothing owed is hidden
   function payments() {
     const sub = $('#fSub').value;
-    const owed = db.invoices.filter(i => !i.paid && (!sub || i.from.name === sub)).sort((a, b) => a.date.localeCompare(b.date));
+    const owed = db.invoices.filter(i => !i.paid && (!sub || window.IM.canonSub(i.from.name) === sub)).sort((a, b) => a.date.localeCompare(b.date));
     const today = new Date(iso(new Date()) + 'T00:00:00Z');
     const total = owed.reduce((a, i) => a + H.totals(i).total, 0);
     $('#payCount').textContent = owed.length ? `${owed.length} invoice(s) · £${money(total)} to pay` : '';
     const bySub = {};
-    owed.forEach(i => { bySub[i.from.name] = (bySub[i.from.name] || 0) + H.totals(i).total; });
+    owed.forEach(i => { const n = window.IM.canonSub(i.from.name); bySub[n] = (bySub[n] || 0) + H.totals(i).total; });
     $('#owedBySub').innerHTML = Object.entries(bySub).sort((a, b) => b[1] - a[1]).map(([n, v]) => `<span class="chip">${esc(n)} <b>£${money(v)}</b></span>`).join('');
     $('#payTable').innerHTML = owed.length ? `<thead><tr><th>Invoice</th><th>Subcontractor</th><th>Invoice date</th><th class="r">Waiting</th><th class="r">Amount</th><th></th></tr></thead><tbody>` +
       owed.map(i => {
