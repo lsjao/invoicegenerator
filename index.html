@@ -17,6 +17,7 @@
     <button class="tab active" data-tab="create">Create</button>
     <button class="tab" data-tab="queue">Queue <b class="badge" id="queueCount">0</b></button>
     <button class="tab" data-tab="subs">Subcontractors</button>
+    <button class="tab" data-tab="props">Properties</button>
     <button class="tab" data-tab="timesheet">Timesheet</button>
     <button class="tab" data-tab="dash">Dashboard</button>
     <button class="tab" data-tab="settings">Settings</button>
@@ -197,7 +198,7 @@ Anna Kowal
 </main>
 
 <!-- ============ SUBCONTRACTORS ============ -->
-<main class="view narrow" data-view="subs" hidden>
+<main class="view wide-view" data-view="subs" hidden>
   <div class="panel">
     <div class="queue-bar">
       <h2>Subcontractors</h2>
@@ -221,6 +222,22 @@ Anna Kowal
 </main>
 
 <!-- ============ DASHBOARD ============ -->
+<main class="view wide-view" data-view="props" hidden>
+  <div class="panel">
+    <div class="queue-bar">
+      <h2>Properties</h2>
+      <div class="row gap">
+        <input type="search" id="propSearch" placeholder="Search">
+        <select id="propSort" aria-label="Sort"><option value="code">Sort: code</option><option value="spend">Sort: total spend</option><option value="days">Sort: days</option><option value="last">Sort: last worked</option></select>
+        <button class="btn primary" id="addProp">+ New property</button>
+      </div>
+    </div>
+    <div id="unsavedPropsBanner" class="notice" hidden></div>
+    <div class="table-wrap"><table class="data prop-table" id="propList"></table></div>
+    <div id="propDetail" class="prop-detail" hidden></div>
+  </div>
+</main>
+
 <main class="view wide-view" data-view="timesheet" hidden>
   <div class="panel">
     <div class="cal-head">
@@ -463,5 +480,6 @@ Anna Kowal
 <script src="js/app.js"></script>
 <script src="js/dashboard.js"></script>
 <script src="js/timesheet.js"></script>
+<script src="js/properties.js"></script>
 </body>
 </html>

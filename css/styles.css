@@ -208,7 +208,7 @@ table.items .amt { text-align: right; white-space: nowrap; padding-right: 6px; }
 .check-list .warn::before { content: "!"; color: var(--danger); font-weight: 700; width: 10px; text-align: center; }
 
 /* Subcontractor cards */
-.card-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.card-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
 .sub-card { border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 6px; }
 .sub-card h4 { margin: 0; font-size: 15px; }
 .sub-card .meta { font-size: 12px; color: var(--muted); white-space: pre-line; }
@@ -520,3 +520,20 @@ table.items td.amt { padding-right: 8px; }
 
 .dup-choices { display: grid; gap: 8px; }
 .dup-choices .btn { justify-content: center; white-space: normal; text-align: center; }
+
+/* Subcontractor cards: keep text inside the card */
+.sub-card { min-width: 0; overflow-wrap: anywhere; }
+.sub-card .stats { flex-wrap: wrap; row-gap: 8px; }
+.sub-card .stats > div { min-width: 0; }
+.wide-view { max-width: min(1680px, 96vw); }
+/* Properties */
+.prop-table .prop-row { cursor: pointer; }
+.prop-table .prop-row:hover, .prop-table .prop-row.sel { background: rgba(31, 61, 43, .08); }
+.prop-table td:nth-child(2) { max-width: 360px; }
+.owed-txt { color: var(--danger); }
+.prop-detail { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.prop-kpis { margin: 10px 0 14px; }
+.prop-kpis .kpi b { font-size: 18px; }
+.prop-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.prop-form .span-all { grid-column: 1 / -1; }
+.prop-log { max-height: 420px; overflow: auto; }

@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v20 · 16 Oct 2026';
+  const APP_VERSION = 'v21 · 16 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -48,7 +48,7 @@
     out.subs = arr(d.subs).map(x => ({ ...x, id: safeId(x.id), name: str(x.name, 200), addr: str(x.addr, 400), accName: str(x.accName, 200), accNo: str(x.accNo, 40), sort: str(x.sort, 20),
       rate: x.rate === '' || x.rate == null ? '' : numOr(x.rate), vat: VATS.includes(String(x.vat)) ? String(x.vat) : '', aliases: arr(x.aliases).map(a => str(a, 200)),
       phone: str(x.phone, 60), email: str(x.email, 200), notes: str(x.notes, 1000) }));
-    out.sites = arr(d.sites).map(x => ({ code: str(x.code, 20), name: str(x.name, 200), area: str(x.area, 100), postcode: str(x.postcode, 20), aliases: arr(x.aliases).map(a => str(a, 100)) }));
+    out.sites = arr(d.sites).map(x => ({ code: str(x.code, 20), name: str(x.name, 200), area: str(x.area, 100), postcode: str(x.postcode, 20), aliases: arr(x.aliases).map(a => str(a, 100)), notes: str(x.notes, 2000) }));
     out.rates = arr(d.rates).map(r => numOr(r, NaN)).filter(Number.isFinite);
     out.invoices = arr(d.invoices).map(i => cleanInvoice(i));
     const st = d.settings || {};
@@ -178,6 +178,7 @@
     if (name === 'subs') renderSubs();
     if (name === 'settings') renderSettings();
     if (name === 'dash') window.Dashboard && window.Dashboard.render();
+    if (name === 'props') { renderUnsaved(); window.Properties && window.Properties.render(); }
     if (name === 'timesheet') window.Timesheet && window.Timesheet.render();
     if (name === 'create') renderPreview();
     try { sessionStorage.setItem('im.tab', name); } catch (e) {}
@@ -783,6 +784,7 @@
     const fill = (el, n, noun) => { if (!el) return; el.hidden = !n; el.innerHTML = n ? `<span><b>${n}</b> ${noun}${n === 1 ? ' is' : 's are'} used in your invoices but not saved yet.</span> <button type="button" class="btn small primary" data-review>Review and add</button>` : ''; };
     fill($('#unsavedSubsBanner'), us, 'subcontractor name');
     fill($('#unsavedSitesBanner'), ut, 'property code');
+    fill($('#unsavedPropsBanner'), ut, 'property code');
   }
   let rv = { subs: {}, sites: {} };
   const rvSub = k => (rv.subs[k] = rv.subs[k] || { include: true });
@@ -1573,6 +1575,8 @@
   window.AutoFile && window.AutoFile.init(() => { renderAutosaveBadge(); renderAutosave(); });
   window.initDashboard && window.initDashboard();
   window.initTimesheet && window.initTimesheet();
+  window.IM.fillSelects = fillSelects; window.IM.ask = ask;
+  window.initProperties && window.initProperties();
   showTab(startTab);
   renderPreview();
 
