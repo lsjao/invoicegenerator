@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v21 · 16 Oct 2026';
+  const APP_VERSION = 'v22 · 16 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -178,7 +178,7 @@
     if (name === 'subs') renderSubs();
     if (name === 'settings') renderSettings();
     if (name === 'dash') window.Dashboard && window.Dashboard.render();
-    if (name === 'props') { renderUnsaved(); window.Properties && window.Properties.render(); }
+    if (name === 'props') { autoAddSites(); renderUnsaved(); window.Properties && window.Properties.render(); }
     if (name === 'timesheet') window.Timesheet && window.Timesheet.render();
     if (name === 'create') renderPreview();
     try { sessionStorage.setItem('im.tab', name); } catch (e) {}
@@ -778,6 +778,14 @@
       g.n++; g.total += (+it.qty || 0) * (+it.price || 0); m.set(k, g);
     }));
     return [...m.values()].sort((a, b) => b.total - a.total);
+  }
+  // The Properties tab lists every code used in your invoices, so codes not saved yet are added here (near-misses of a saved code stay in the review banner).
+  function autoAddSites() {
+    const add = unsavedSites().filter(x => !x.maybe);
+    if (!add.length) return;
+    add.forEach(x => db.sites.push({ code: x.code, name: '', area: '', postcode: '', aliases: [], notes: '' }));
+    db.sites.sort((a, b) => a.code.localeCompare(b.code));
+    saveNow(); fillSelects(); toast(`Added ${add.length} propert${add.length === 1 ? 'y' : 'ies'} found in your invoices: ${add.map(x => x.code).join(', ')}`, 6000);
   }
   function renderUnsaved() {
     const us = unsavedSubs().length, ut = unsavedSites().length;
