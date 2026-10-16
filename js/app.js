@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v18 · 14 Oct 2026';
+  const APP_VERSION = 'v19 · 16 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -551,7 +551,9 @@
       const key = [name.toLowerCase(), r.date, site.code.toLowerCase(), r.amount.toFixed(2)].join('|');
       const hit = db.invoices.find(i => i.from.name.toLowerCase() === name.toLowerCase() && Math.abs(totals(i).total - r.amount) < 0.005 && (i.date === r.date || i.items.some(it => it.date === r.date)));
       const repeat = seen.has(key); seen.add(key);
-      return { ...r, name, known: !!sub, site: site.code, fix: site, dupOf: hit ? (hit.number || 'a past record') : '', repeat, include: !hit && !repeat };
+      // A spelling close to a saved subcontractor (Serghei / Sergej) is offered as a one-click match
+      const maybe = sub ? null : db.subs.find(x => x.name.length >= 6 && name.length >= 6 && P.lev(x.name.toLowerCase(), name.toLowerCase()) <= 2) || null;
+      return { ...r, name, known: !!sub, maybe, site: site.code, fix: site, dupOf: hit ? (hit.number || 'a past record') : '', repeat, include: !hit && !repeat };
     });
     renderPast();
   }
@@ -561,7 +563,7 @@
     box.hidden = false;
     const n = past.filter(r => r.include).length, sum = past.filter(r => r.include).reduce((a, r) => a + r.amount, 0);
     const chips = r => [
-      !r.known ? '<span class="chip warn" title="Not a saved subcontractor. The name is used as written.">Not saved</span>' : '',
+      r.maybe ? `<button type="button" class="chip fix chip-btn" data-pmerge title="Use the saved name and remember this spelling for next time">Same as ${esc(r.maybe.name)}? Use</button>` : !r.known ? '<span class="chip warn" title="Not a saved subcontractor. The name is used as written. Add the spelling under Also known as to match a saved person.">Not saved</span>' : '',
       !r.site ? '<span class="chip warn">No property</span>' : r.fix.how === 'unknown' ? `<span class="chip miss" title="Not a saved property">Unknown ${esc(r.fix.from)}</span>` : r.fix.how ? `<span class="chip fix" title="Corrected automatically">${esc(r.fix.from)} → ${esc(r.site)}</span>` : '',
       r.dupOf ? `<span class="chip miss" title="Same subcontractor, amount and date already exists">Already recorded (${esc(r.dupOf)})</span>` : '',
       r.repeat ? '<span class="chip miss">Repeated in this paste</span>' : ''
@@ -609,7 +611,17 @@
     if (t.hasAttribute('data-pinc')) { past[t.closest('[data-pi]').dataset.pi].include = t.checked; renderPast(); }
   });
   $('#pastResult').addEventListener('input', e => { if (e.target.hasAttribute('data-pref')) past[e.target.closest('[data-pi]').dataset.pi].ref = e.target.value; });
-  $('#pastResult').addEventListener('click', e => { if (e.target.id === 'pastAdd') addPast(); });
+  $('#pastResult').addEventListener('click', e => {
+    if (e.target.id === 'pastAdd') return addPast();
+    const m = e.target.closest('[data-pmerge]');
+    if (m) {   // remember the spelling on the saved subcontractor, then re-read the paste so every matching row resolves
+      const r = past[m.closest('[data-pi]').dataset.pi], sub = r.maybe, written = r.name;
+      sub.aliases = [...new Set([...(sub.aliases || []), written])];
+      saveNow(); previewPast(); toast(`${written} is now also known as ${sub.name}`, 4000);
+    }
+  });
+  // Show the table the moment text is pasted
+  $('#pastBox').addEventListener('paste', () => setTimeout(() => { if ($('#pastBox').value.trim()) previewPast(); }, 60));
   $('#pastUndo').addEventListener('click', async e => {
     if (e.target.id !== 'pastUndoBtn') return;
     const last = pastBatches()[0]; if (!last) return;

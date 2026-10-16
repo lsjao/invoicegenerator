@@ -61,8 +61,11 @@ Anna Kowal
 
       <div class="mode-body" data-modebody="past" hidden>
         <p class="hint">For old invoices with no reference, or a different one. Each line is added as a record: no invoice number is used, the numbering never moves, and existing invoices are never changed or replaced.</p>
-        <textarea id="pastBox" rows="9" placeholder="5 Jan 2026&#9;John Smith - Subcontractor - 12AB&#9;420
-12 Jan 2026&#9;Anna Kowal - Subcontractor - 5CD&#9;300"></textarea>
+        <p class="hint past-cols"><b>Paste rows from your spreadsheet.</b> Columns: date, subcontractor, description (name - role - property) and amount. Empty columns are fine. A column holding a reference such as INV-12 is kept as the reference, otherwise there is none. The preview appears as soon as you paste.</p>
+        <textarea id="pastBox" rows="9" spellcheck="false" placeholder="Paste here, one invoice per line, for example:
+
+5 Jan 2026&#9;John Smith&#9;John Smith - Subcontractor - 12AB&#9;&#9;&#9;420
+12 Jan 2026&#9;Anna Kowal&#9;Anna Kowal - Subcontractor 5CD&#9;&#9;&#9;300"></textarea>
         <div class="row gap past-opts">
           <button class="btn primary" id="pastParse">Preview records</button>
           <button class="btn ghost" id="pastClear">Clear</button>

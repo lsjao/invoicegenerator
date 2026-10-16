@@ -406,12 +406,25 @@
   const REF = /^(?:ref(?:erence)?\.?\s*[:#]?\s*)?((?:inv(?:oice)?)[\s-]?\d+[A-Za-z0-9-]*|[A-Za-z]{1,5}-\d{2,}[A-Za-z0-9-]*|#\d+)$/i;
   const ROLE = /^(subcontractors?|sub|labou?r|maintenance|invoice|payment|paid)$/i;
 
-  function splitDesc(desc) {
+  const ROLE_PREFIX = /^(?:subcontractors?|sub|labou?r)\s+/i;
+  // "Andrei Gogoi Andrei Gogoi" (a pasted column that repeats the name) becomes "Andrei Gogoi"
+  function collapseDouble(name) {
+    const w = name.split(/\s+/);
+    if (w.length >= 2 && w.length % 2 === 0) { const h = w.length / 2; if (w.slice(0, h).join(' ').toLowerCase() === w.slice(h).join(' ').toLowerCase()) return w.slice(0, h).join(' '); }
+    return name;
+  }
+
+  // "Name - Subcontractor - SITE", "Name - Subcontractor SITE", "Name - SITE - INV-12" ...
+  // nameHint is the value of a separate Subcontractor column, which wins over a name typed inside the description.
+  function splitDesc(desc, nameHint) {
     const parts = desc.split(/\s+[-–—]\s+/).map(x => x.trim()).filter(Boolean);
-    let name = parts.shift() || '', ref = '', site = '';
+    let name = '', ref = '', site = '';
+    if (parts.length && !ROLE.test(parts[0]) && !REF.test(parts[0]) && !ROLE_PREFIX.test(parts[0])) name = collapseDouble(parts.shift());
+    if (nameHint) name = nameHint;
     const rest = [];
-    for (const part of parts) {
-      if (ROLE.test(part)) continue;
+    for (const raw of parts) {
+      const part = raw.replace(ROLE_PREFIX, '').trim();
+      if (!part || ROLE.test(part)) continue;
       const r = part.match(REF);
       if (r && !ref) ref = r[1].replace(/^#/, ''); else rest.push(part);
     }
@@ -420,17 +433,23 @@
   }
 
   function parseRecordLine(line) {
-    let dateStr = '', desc = '', amountStr = '', ref = '';
-    const cells = line.split(/\t+/).map(c => c.trim()).filter(Boolean);
+    let dateStr = '', desc = '', amountStr = '', ref = '', nameCol = '', cells = line.split('\t').map(c => c.trim()).filter(Boolean);
+    if (cells.length < 3) cells = line.split(/\s{2,}/).map(c => c.trim()).filter(Boolean);   // columns separated by runs of spaces
     if (cells.length >= 3) {
-      // Spreadsheet row: find the date, the amount and the description wherever they sit
+      // Spreadsheet row: the date and amount can sit anywhere, empty columns are ignored
       const di = cells.findIndex(c => c.length <= 24 && LEAD_DATE.some(rx => rx.test(c)) && parseDate(c));
       let ai = -1; cells.forEach((c, i) => { if (i !== di && AMOUNT.test(c)) ai = i; });
       if (di < 0 || ai < 0) return null;
-      const others = cells.filter((_, i) => i !== di && i !== ai);
-      const di2 = others.findIndex(c => /[A-Za-z]{3}/.test(c) && /\s[-–—]\s|\s/.test(c));
-      desc = di2 >= 0 ? others[di2] : others[0] || '';
-      others.forEach((c, i) => { if (i !== (di2 >= 0 ? di2 : 0) && !ref) { const m = c.match(REF); ref = m ? m[1].replace(/^#/, '') : (c.length <= 40 ? c : ''); } });
+      const rest = cells.filter((_, i) => i !== di && i !== ai);
+      const isDesc = c => /\s[-–—]\s/.test(c) || /\b(?:subcontractors?|labou?r)\b/i.test(c);
+      const descCell = rest.find(isDesc) || '';
+      const others = rest.filter(c => c !== descCell);
+      // A reference is an INV-style value or any short single token with a digit (2025-3001, OLD/77)
+      const refLike = c => REF.test(c) || (/^[\w./#-]{1,30}$/.test(c) && /\d/.test(c) && !AMOUNT.test(c));
+      nameCol = others.find(c => /[A-Za-z]{2}/.test(c) && !refLike(c)) || '';
+      const refCell = others.find(c => c !== nameCol && refLike(c));
+      ref = refCell ? (refCell.match(REF) ? refCell.match(REF)[1] : refCell).replace(/^#/, '') : '';
+      desc = descCell || nameCol;
       dateStr = cells[di]; amountStr = cells[ai];
     } else {
       let lead = null;
@@ -444,7 +463,7 @@
     const d = parseDate(dateStr);
     const amount = +amountStr.replace(/[£,\s]/g, '');
     if (!d || !(amount > 0) || !desc) return null;
-    const x = splitDesc(desc);
+    const x = splitDesc(desc, nameCol);
     if (!x.name || !/[A-Za-z]/.test(x.name)) return null;
     return { date: d.iso, name: x.name, site: x.site, amount, ref: ref || x.ref, hyphenated: /\s[-–—]\s/.test(desc), tabbed: cells.length >= 3 };
   }
@@ -466,5 +485,5 @@
     return sure > 0 && sure >= (rows.length + skipped.length) * 0.6;
   }
 
-  window.InvoiceParser = { parse, splitBatch, resolveSite, parsePastRecords, looksLikePast, parseDate, mondayOf, addDays };
+  window.InvoiceParser = { parse, splitBatch, resolveSite, parsePastRecords, looksLikePast, lev, parseDate, mondayOf, addDays };
 })();
