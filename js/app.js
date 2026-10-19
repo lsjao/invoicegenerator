@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v22 · 16 Oct 2026';
+  const APP_VERSION = 'v23 · 19 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -136,7 +136,11 @@
 
   /* ---------- Numbering ---------- */
   // One invoice number sequence for everyone, whoever the subcontractor is
-  function numberFor() { return db.settings.prefix + pad4(db.settings.nextNo); }
+  const numPart = n => +(String(n || '').match(/(\d+)\s*$/) || [])[1] || 0;
+  // Never below the stored counter or the highest number already used by a real invoice, so a number is never handed out twice
+  function nextFree() { return Math.max(+db.settings.nextNo || 1, ...db.invoices.filter(i => !i.legacy).map(i => numPart(i.number) + 1)); }
+  function numberFor() { return db.settings.prefix + pad4(nextFree()); }
+  const numberTaken = (num, skipId) => !!num && db.invoices.some(i => !i.legacy && i.id !== skipId && i.number === num);
   const pad4 = n => String(n).padStart(4, '0');
   function bumpNumber(inv, sub) {
     const n = +(String(inv.number).match(/(\d+)\s*$/) || [])[1];
@@ -443,6 +447,11 @@
   const hasNewDays = (inv, ov) => inv.items.some(it => !it.date || !ovDates(ov).has(it.date));
   const ovText = o => `${esc(o.inv.number)} already has ${o.dates.map(shortDate).join(', ')}`;
 
+  // Give every auto-numbered invoice in the batch its own number, counting on from the highest one in use
+  function renumberBatch() {
+    let n = nextFree();
+    batch.forEach(inv => { if (inv._autoNumber) inv.number = db.settings.prefix + pad4(n++); });
+  }
   function extractBatch(header, segments) {
     batch = segments.map(seg => {
       const inv = blankInvoice({ weekStart: cur.weekStart, to: cur.to, template: cur.template });
@@ -454,6 +463,7 @@
       inv._include = !problems(inv).length && inv._ovAct !== 'skip';
       return inv;
     });
+    renumberBatch();
     renderBatch();
   }
   function ovBox(inv) {
@@ -476,7 +486,7 @@
           <label class="toggle" title="Include"><input type="checkbox" data-binc${inv._include ? ' checked' : ''}${problems(inv).length ? ' disabled' : ''}><span></span></label>
           <div class="bthumb" data-bthumb="${i}" tabindex="0" aria-label="Preview ${esc(inv.from.name)}">${renderInvoiceHTML(inv)}</div>
           <div><b>${esc(inv.from.name || 'Unknown')}</b> ${formatPill(inv)}
-            <div class="muted">${inv.items.length} line(s)${days.length ? ` · ${shortDate(days[0])}–${shortDate(days[days.length - 1])}` : ''} · £${money(t.total)}${inv.number && !inv._autoNumber ? ' · ' + esc(inv.number) : ''}</div>
+            <div class="muted">${inv.items.length} line(s)${days.length ? ` · ${shortDate(days[0])}–${shortDate(days[days.length - 1])}` : ''} · £${money(t.total)}${inv.number ? ' · ' + esc(inv.number) : ''}</div>
             ${paidControl(inv, 'data-bpaid')}
             ${ovBox(inv)}
             <div class="chips">${warnChips(inv)}${fixChips(inv)}${miss.filter(m => m !== 'Rate').map(m => `<span class="chip miss">${m}</span>`).join('')}</div>
@@ -547,7 +557,7 @@
   $('#extractResult').addEventListener('click', async e => {
     const bi = e.target.closest('[data-bi]');
     const act = e.target.dataset.bact;
-    if (bi && act === 'del') { batch.splice(+bi.dataset.bi, 1); selBatch = -1; renderBatch(); return; }
+    if (bi && act === 'del') { batch.splice(+bi.dataset.bi, 1); selBatch = -1; renumberBatch(); renderBatch(); return; }
     if (bi && act === 'edit') {
       // Move this one into the form; the rest stay in the batch list
       const [inv] = batch.splice(+bi.dataset.bi, 1); selBatch = -1;
@@ -565,6 +575,7 @@
     if (e.target.id === 'batchQueue' || e.target.id === 'batchDownload') {
       const picked = batch.filter(i => i._include && !problems(i).length);
       const saved = []; let replaced = 0;
+      const runId = uid().slice(0, 8), runAt = new Date().toISOString();
       picked.forEach(inv => {
         const ov = inv._ov || [];
         if (inv._ovAct === 'new') { const ds = ovDates(ov); inv.items = inv.items.filter(it => !it.date || !ds.has(it.date)); if (!inv.items.length) return; }
@@ -573,9 +584,11 @@
           target = ov[0].inv; inv.number = target.number; inv.paid = target.paid; if (target.paidDate) inv.paidDate = target.paidDate; replaced++;
         } else if (inv._autoNumber) inv.number = numberFor(findSub(inv.from.name));
         ['_include', '_autoNumber', '_fixes', '_format', '_warn', '_ov', '_ovAct'].forEach(k => delete inv[k]);
+        if (!target) { inv.batch = runId; inv.batchAt = runAt; }
         saved.push(commit(inv, target ? target.id : null));
       });
-      batch = batch.filter(i => !picked.includes(i)); selBatch = -1;
+      batch = batch.filter(i => !picked.includes(i)); selBatch = -1; renumberBatch();
+      if (!editingId && !numberTouched) { cur.number = numberFor(); fillForm(); }
       renderBatch();
       if (!batch.length) $('#pasteBox').value = '';
       toast(`${saved.length} invoice(s) queued${replaced ? ` (${replaced} replaced an earlier invoice, same number)` : ''}${batch.length ? ` · ${batch.length} left to fix` : ''}`);
@@ -948,6 +961,7 @@
     const inv = JSON.parse(JSON.stringify(src));
     inv.items.forEach(it => delete it._priceSet);
     delete inv._fixes; delete inv._format; delete inv._warn; delete inv._ov; delete inv._ovAct;
+    if (!inv.legacy && !editingId && (numberTaken(inv.number) || !numPart(inv.number))) inv.number = numberFor();   // never reuse a number
     if (!inv.legacy) remember(inv);   // past records never move the number sequence or add rates/sites
     if (editingId) {
       const i = db.invoices.findIndex(x => x.id === editingId);
@@ -1006,6 +1020,9 @@
   function renderQueue() {
     const items = queueItems();
     $('#queueEmpty').hidden = items.length > 0;
+    const runs = {}; db.invoices.filter(i => !i.legacy && i.batch).forEach(i => { (runs[i.batch] = runs[i.batch] || []).push(i); });
+    const runOrder = Object.keys(runs).sort((a, b) => (runs[a][0].batchAt || '').localeCompare(runs[b][0].batchAt || ''));
+    const runPill = inv => { if (inv.legacy || !inv.batch || !runs[inv.batch]) return ''; const g = runs[inv.batch], at = new Date(inv.batchAt || g[0].createdAt); return ` · <span class="pill" title="Created together in one batch">Batch ${runOrder.indexOf(inv.batch) + 1} · ${g.length} invoices${isNaN(at) ? '' : ' · ' + at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>`; };
     $('#queueList').innerHTML = items.map(inv => {
       const t = totals(inv);
       const days = inv.items.map(i => i.date).filter(Boolean).sort();
@@ -1013,7 +1030,7 @@
         <label class="toggle" title="Include in download"><input type="checkbox" data-sel${inv.selected ? ' checked' : ''}><span></span></label>
         <div class="q-main"><b>${esc(inv.number || 'Past record')} · ${esc(inv.from.name)}</b>
           <span>${longDate(inv.date)}${days.length ? ` · work ${shortDate(days[0])}–${shortDate(days[days.length - 1])}` : (inv.items.find(i => i.week) ? ` · week of ${shortDate(inv.items.find(i => i.week).week)}` : '')}
-          ${inv.legacy && inv.number ? ' · <span class="pill">Past record</span>' : ''}${inv.downloadedAt ? ' · <span class="pill ok">Downloaded</span>' : ''}${inv.archived ? ' · <span class="pill">Archived</span>' : ''}</span></div>
+          ${inv.legacy && inv.number ? ' · <span class="pill">Past record</span>' : ''}${runPill(inv)}${inv.downloadedAt ? ' · <span class="pill ok">Downloaded</span>' : ''}${inv.archived ? ' · <span class="pill">Archived</span>' : ''}</span></div>
         <div class="q-amt">£${money(t.total)}</div>
         <div class="q-act">
           ${inv.paid ? `<button class="pill paid pay-btn" data-act="paid" title="Change paid date or mark unpaid">Paid ${inv.paidDate ? shortDate(inv.paidDate) : ''}</button>`
