@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v23 · 19 Oct 2026';
+  const APP_VERSION = 'v24 · 26 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -183,6 +183,7 @@
     if (name === 'settings') renderSettings();
     if (name === 'dash') window.Dashboard && window.Dashboard.render();
     if (name === 'props') { autoAddSites(); renderUnsaved(); window.Properties && window.Properties.render(); }
+    if (name === 'sheet') window.Sheet && window.Sheet.render();
     if (name === 'timesheet') window.Timesheet && window.Timesheet.render();
     if (name === 'create') renderPreview();
     try { sessionStorage.setItem('im.tab', name); } catch (e) {}
@@ -1131,12 +1132,19 @@
 
   /* ---------- PDF ---------- */
   const fileName = inv => `${inv.number || 'Past record ' + inv.date} - ${(inv.from.name || '').trim().split(/\s+/).pop() || 'Invoice'}`.replace(/[\\/:*?"<>|]/g, '') + '.pdf';
-  async function invoicePdfBlob(inv) {
+  async function invoiceCanvas(inv, scale = 2.5) {
     const stage = $('#pdfStage');
     stage.innerHTML = renderInvoiceHTML(inv);
     const page = stage.firstElementChild;
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
-    const canvas = await window.html2canvas(page, { scale: 2.5, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const canvas = await window.html2canvas(page, { scale, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    stage.innerHTML = '';
+    return canvas;
+  }
+  window.IM.invoiceCanvas = invoiceCanvas;
+  async function invoicePdfBlob(inv) {
+    const stage = $('#pdfStage');
+    const canvas = await invoiceCanvas(inv);
     const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
     pdf.setProperties({ title: `${inv.number} - ${inv.from.name}`, author: inv.from.name, subject: 'Invoice' });
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.94), 'JPEG', 0, 0, 210, 297);
@@ -1156,6 +1164,7 @@
     return true;
   }
   window.IM.saveBlob = saveBlob;
+  window.IM.downloadInvoices = downloadInvoices; window.IM.toast = toast;
   async function downloadInvoices(list, mode, opts = {}) {
     if (!window.html2canvas || !window.jspdf) { toast('PDF library did not load. Reload the page and try again.', 5000); return; }
     const btns = $$('#downloadBtn, #downloadCurrent'); btns.forEach(b => (b.disabled = true));
@@ -1602,6 +1611,7 @@
   window.initTimesheet && window.initTimesheet();
   window.IM.fillSelects = fillSelects; window.IM.ask = ask;
   window.initProperties && window.initProperties();
+  window.initSheet && window.initSheet();
   showTab(startTab);
   renderPreview();
 

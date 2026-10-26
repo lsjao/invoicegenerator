@@ -18,6 +18,7 @@
     <button class="tab" data-tab="queue">Queue <b class="badge" id="queueCount">0</b></button>
     <button class="tab" data-tab="subs">Subcontractors</button>
     <button class="tab" data-tab="props">Properties</button>
+    <button class="tab" data-tab="sheet">Weekly sheet</button>
     <button class="tab" data-tab="timesheet">Timesheet</button>
     <button class="tab" data-tab="dash">Dashboard</button>
     <button class="tab" data-tab="settings">Settings</button>
@@ -235,6 +236,22 @@ Anna Kowal
     <div id="unsavedPropsBanner" class="notice" hidden></div>
     <div class="table-wrap"><table class="data prop-table" id="propList"></table></div>
     <div id="propDetail" class="prop-detail" hidden></div>
+  </div>
+</main>
+
+<main class="view wide-view" data-view="sheet" hidden>
+  <div class="panel">
+    <div class="queue-bar">
+      <h2>Weekly sheet</h2>
+      <div class="row gap">
+        <select id="shPeriod" aria-label="Period"><option value="4">Last 4 weeks</option><option value="8">Last 8 weeks</option><option value="13">Last 13 weeks</option><option value="26">Last 26 weeks</option><option value="all">All weeks</option></select>
+        <label class="check"><input type="checkbox" id="shPast" checked> Include past records</label>
+        <label class="check"><input type="checkbox" id="shAttach" checked> Attach invoices in PDF</label>
+        <button class="btn primary" id="shPdf">Download sheet as PDF</button>
+      </div>
+    </div>
+    <p class="hint">Who worked where each day, with the invoice for each row. Click an invoice number to download its PDF. In the downloaded sheet, the invoice numbers link to the invoice pages attached behind it.</p>
+    <div id="sheetWrap" class="sheet-wrap"></div>
   </div>
 </main>
 
@@ -481,5 +498,6 @@ Anna Kowal
 <script src="js/dashboard.js"></script>
 <script src="js/timesheet.js"></script>
 <script src="js/properties.js"></script>
+<script src="js/sheet.js"></script>
 </body>
 </html>

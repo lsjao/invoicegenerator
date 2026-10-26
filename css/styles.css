@@ -537,3 +537,29 @@ table.items td.amt { padding-right: 8px; }
 .prop-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
 .prop-form .span-all { grid-column: 1 / -1; }
 .prop-log { max-height: 420px; overflow: auto; }
+
+/* Weekly sheet */
+.sheet-wrap { overflow-x: auto; }
+.sheet-sheet { background: #fff; color: #1b1a19; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-width: 940px; font-size: 13px; }
+.sheet-band { background: #1f3d2b; color: #fff; text-align: center; font-weight: 600; padding: 9px; letter-spacing: .02em; }
+.sheet-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 10px; }
+.sheet-table th, .sheet-table td { padding: 6px 6px; text-align: center; border-bottom: 1px solid #e3e0da; vertical-align: middle; font-variant-numeric: tabular-nums; }
+.sheet-table thead th { background: #1f3d2b; color: #fff; font-weight: 600; font-size: 12px; border: 0; }
+.sheet-table thead tr:nth-child(2) th { padding-top: 0; }
+.sheet-table th.l, .sheet-table td.l { text-align: left; }
+.sheet-table th.r, .sheet-table td.r { text-align: right; }
+.sheet-table col, .sheet-table th:first-child { width: 15%; }
+.sheet-table tbody th { font-weight: 600; background: #fff; }
+.sheet-table th.sh-num small { display: block; font-weight: 400; opacity: .75; font-size: 10px; }
+.sheet-table td.sh-on { background: #fff; color: #1f3d2b; font-weight: 600; font-size: 12px; }
+.sheet-table td.sh-off { background: #d9d6cf; }
+.sheet-table td.sh-whole small { display: inline; font-weight: 400; color: #6b665e; margin-left: 4px; }
+.sheet-table td.sh-days { font-weight: 700; background: #f6f4ef; }
+.sheet-table td.sh-invs { background: #f6f4ef; width: 15%; }
+.sheet-table td.sh-invs small { display: block; color: #6b665e; font-size: 11px; }
+.sheet-table td.sh-total { background: #f6f4ef; font-size: 15px; font-weight: 700; }
+.sheet-table td.r { background: #f6f4ef; }
+.sh-inv { color: #1f3d2b; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.sh-inv:hover { color: #14291d; background: #fff3c4; }
+.sh-past { color: #6b665e; }
+.sheet-export { border: 0; border-radius: 0; min-width: 0; }
