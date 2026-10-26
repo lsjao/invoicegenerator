@@ -575,7 +575,7 @@ td.wk .sh-note { display: inline; margin-left: 6px; }
 .sheet-table td.wk .ts-site { display: inline-block; margin: 2px 3px; }
 .sheet-table tbody tr { height: 48px; }
 /* Invoice viewer */
-.invview { width: min(860px, calc(100vw - 24px)); max-height: calc(100vh - 32px); padding: 0; display: flex; flex-direction: column; }
+.invview { width: min(860px, calc(100vw - 24px)); max-height: calc(100vh - 32px); padding: 0; flex-direction: column; }
 .invview[open] { display: flex; }
 .iv-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .iv-head h3 { margin: 0; font-size: 16px; }
