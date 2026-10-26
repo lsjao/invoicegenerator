@@ -105,7 +105,7 @@ window.initSheet = function () {
       }
       const pageOf = id => { const i = invList.findIndex(x => x.id === id); return i < 0 ? 0 : pages.length + 1 + i; };
       linksPerPage.forEach(({ links, k }, pi) => { pdf.setPage(pi + 1); links.forEach(l => { const pn = pageOf(l.id); if (pn) pdf.link(l.x * mm * k, l.y * mm * k, l.w * mm * k, l.h * mm * k, { pageNumber: pn }); }); });
-      const name = `Weekly sheet ${ws[0].w} to ${P.addDays(ws[ws.length - 1].w, 6)}.pdf`;
+      const name = `Weekly Sheet ${ws[0].w} to ${P.addDays(ws[ws.length - 1].w, 6)}.pdf`;
       await window.IM.saveBlob(pdf.output('blob'), name);
       toast(`Downloaded ${name}`, 4000);
     } catch (err) { console.error(err); (window.IM.toast || alert)('PDF failed: ' + err.message); }
