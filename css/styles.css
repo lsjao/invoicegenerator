@@ -573,7 +573,7 @@ td.wk .sh-note { display: inline; margin-left: 6px; }
 .sheet-table td:not(.sh-invs):not(.r):not(.wk) { overflow: visible; }
 .sheet-table .ts-site { display: block; width: fit-content; margin: 3px auto; padding: 2px 7px; font-size: 10.5px; line-height: 1.5; border-radius: 5px; }
 .sheet-table td.wk .ts-site { display: inline-block; margin: 2px 3px; }
-.sheet-table tbody tr { height: 48px; }
+
 /* Invoice viewer */
 .invview { width: min(860px, calc(100vw - 24px)); max-height: calc(100vh - 32px); padding: 0; flex-direction: column; }
 .invview[open] { display: flex; }
@@ -581,3 +581,10 @@ td.wk .sh-note { display: inline; margin-left: 6px; }
 .iv-head h3 { margin: 0; font-size: 16px; }
 .iv-body { overflow: auto; padding: 14px; background: rgba(0, 0, 0, .06); }
 .iv-sizer { overflow: hidden; }
+
+/* Weekly sheet: no inner scroll, everything centred, equal row heights */
+.sheet-week .table-wrap { overflow: visible; max-height: none; }
+.sheet-table th, .sheet-table td, .sheet-table th.l, .sheet-table th.r, .sheet-table td.r, .sheet-table th.c, .sheet-table td.c { text-align: center; vertical-align: middle; }
+.sheet-table tbody tr, .sheet-table tfoot tr { height: 56px; }
+.sheet-table tfoot th, .sheet-table tfoot td { padding-top: 12px; padding-bottom: 12px; border-top: 2px solid var(--line); }
+.sheet-table tbody th { position: static; }
