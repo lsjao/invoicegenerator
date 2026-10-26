@@ -28,30 +28,32 @@ window.initSheet = function () {
     });
   }
 
-  const cellTxt = rs => rs.map(r => esc(r.site) + (r.qty !== 1 ? ` ×${+r.qty.toFixed(2)}` : '')).join('<br>');
+  const chips = rs => rs.map(r => `<span class="ts-site">${esc(r.site)}${r.qty !== 1 ? ' ×' + +r.qty.toFixed(2) : ''}</span>`).join('');
   const invLink = inv => inv.legacy
     ? `<span class="sh-past" title="Past record, no PDF">${esc(inv.number || 'Past record')}</span>`
     : `<a href="#" class="sh-inv" data-inv="${esc(inv.id)}" title="Download ${esc(inv.number)} as PDF">${esc(inv.number)}</a>`;
 
   function block(wk) {
-    const dates = DAYS.map((_, i) => P.addDays(wk.w, i));
-    const head = `<thead><tr><th rowspan="2" class="l">Subcontractor</th>${DAYS.map(d => `<th>${d.slice(0, 3)}</th>`).join('')}<th rowspan="2">Days</th><th rowspan="2">Invoice</th><th rowspan="2" class="r">Amount</th><th rowspan="2" class="r">Week total</th></tr>
-      <tr>${dates.map(d => `<th class="sh-num">${+d.slice(8)}${+d.slice(8) === 1 || d === dates[0] ? `<small>${MON[+d.slice(5, 7) - 1]}</small>` : ''}</th>`).join('')}</tr></thead>`;
-    const rows = wk.list.map((x, i) => {
+    const dates = DAYS.map((_, i) => P.addDays(wk.w, i)), end = dates[6];
+    const hasWhole = wk.list.some(x => x.whole.length && !x.dated.length);
+    const perDay = dates.map(d => new Set(wk.list.filter(x => x.dated.some(r => r.date === d)).map(x => x.name)).size);
+    const totDays = wk.list.reduce((a, x) => a + x.days, 0);
+    const head = `<thead><tr><th class="l">Subcontractor</th>${dates.map((d, i) => `<th class="c">${DAYS[i].slice(0, 3)}<small>${+d.slice(8)}</small></th>`).join('')}<th class="r">Days</th><th class="c">Invoice</th><th class="r">Amount</th></tr></thead>`;
+    const rows = wk.list.map(x => {
       const onlyWhole = !x.dated.length && x.whole.length;
       const cells = onlyWhole
-        ? `<td colspan="7" class="sh-on sh-whole">${cellTxt(x.whole)} <small>whole week</small></td>`
-        : dates.map(d => { const l = x.dated.filter(r => r.date === d); return `<td class="${l.length ? 'sh-on' : 'sh-off'}">${cellTxt(l)}</td>`; }).join('');
-      const note = [x.whole.length && !onlyWhole ? 'whole-week line' : '', x.lump.length ? 'adjustment' : ''].filter(Boolean).join(', ');
-      return `<tr><th scope="row" class="l">${esc(x.name)}</th>${cells}<td class="sh-days">${n1(x.days)}</td><td class="sh-invs">${x.invs.map(invLink).join('<br>')}${note ? `<small>${note}</small>` : ''}</td><td class="r">£${money(x.amt)}</td>${i === 0 ? `<td class="r sh-total" rowspan="${wk.list.length}">£${money(wk.total)}</td>` : ''}</tr>`;
+        ? `<td colspan="7" class="on wk">${chips(x.whole)} <span class="sh-note">whole week</span></td>`
+        : dates.map(d => { const l = x.dated.filter(r => r.date === d); return `<td class="${l.length ? 'on' : ''}">${chips(l)}</td>`; }).join('');
+      const note = [x.whole.length && !onlyWhole ? 'plus whole-week line' : '', x.lump.length ? 'adjustment' : ''].filter(Boolean).join(', ');
+      return `<tr><th scope="row" class="l">${esc(x.name)}</th>${cells}<td class="r"><b>${n1(x.days)}</b></td><td class="c sh-invs">${x.invs.map(invLink).join('<br>')}${note ? `<span class="sh-note">${note}</span>` : ''}</td><td class="r">£${money(x.amt)}</td></tr>`;
     }).join('');
-    return `<table class="sheet-table" data-week="${wk.w}">${head}<tbody>${rows}</tbody></table>`;
+    const foot = `<tfoot><tr><th class="l">On site</th>${perDay.map(n => `<td class="c">${n || ''}</td>`).join('')}<td class="r"><b>${n1(totDays)}</b></td><td></td><td class="r"><b>£${money(wk.total)}</b></td></tr></tfoot>`;
+    return `<section class="sheet-week"><header class="sheet-head"><h3>${long(wk.w)} – ${long(end)} ${end.slice(0, 4)}</h3><span class="sh-sum">${wk.list.length} subcontractor${wk.list.length === 1 ? '' : 's'} · ${n1(totDays)} days · <b>£${money(wk.total)}</b></span></header><div class="table-wrap"><table class="data ts-grid sheet-table"><colgroup><col style="width:16%">${'<col style="width:7.5%">'.repeat(7)}<col style="width:6%"><col style="width:15%"><col style="width:11.5%"></colgroup>${head}<tbody>${rows}</tbody>${foot}</table></div></section>`;
   }
 
-  const bandHtml = () => '<div class="sheet-band">From Invoices</div>';
   function render() {
     const ws = weeks();
-    $('#sheetWrap').innerHTML = ws.length ? `<div class="sheet-sheet">${bandHtml()}${ws.map(block).join('')}</div>` : '<p class="muted">No work recorded in this period.</p>';
+    $('#sheetWrap').innerHTML = ws.length ? ws.map(block).join('') : '<p class="muted">No work recorded in this period.</p>';
     $('#shPdf').disabled = !ws.length;
   }
   $('#shPeriod').addEventListener('change', render);
@@ -74,9 +76,9 @@ window.initSheet = function () {
       // pack week blocks onto pages
       const pages = []; let cur = null, used = 0;
       for (const wk of ws) {
-        const probe = document.createElement('div'); probe.className = 'sheet-sheet sheet-export'; probe.innerHTML = block(wk); stage.appendChild(probe);
+        const probe = document.createElement('div'); probe.className = 'sheet-export'; probe.innerHTML = block(wk); stage.appendChild(probe);
         const h = probe.offsetHeight; stage.removeChild(probe);
-        if (!cur || used + h > PH - 2 * PAD - 40) { cur = []; pages.push(cur); used = 0; }
+        if (!cur || used + h > PH - 2 * PAD) { cur = []; pages.push(cur); used = 0; }
         cur.push(wk); used += h + 10;
       }
       const invList = []; if (attach) ws.forEach(wk => wk.list.forEach(x => x.invs.forEach(i => { if (!i.legacy && !invList.includes(i)) invList.push(i); })));
@@ -84,7 +86,7 @@ window.initSheet = function () {
       const linksPerPage = [];
       for (const [pi, grp] of pages.entries()) {
         toast(`Building sheet ${pi + 1}/${pages.length}…`, 60000);
-        stage.innerHTML = `<div class="sheet-sheet sheet-export" style="padding:${PAD}px">${bandHtml()}${grp.map(block).join('')}</div>`;
+        stage.innerHTML = `<div class="sheet-export" style="padding:${PAD}px">${grp.map(block).join('')}</div>`;
         const el = stage.firstElementChild;
         if (document.fonts && document.fonts.ready) await document.fonts.ready;
         const box = el.getBoundingClientRect();
