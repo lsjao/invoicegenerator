@@ -566,3 +566,18 @@ td.wk .sh-note { display: inline; margin-left: 6px; }
 .sheet-table { table-layout: fixed; width: 100%; }
 .sheet-table th, .sheet-table td { overflow: hidden; text-overflow: ellipsis; }
 .sheet-table td.wk { overflow: visible; }
+
+/* Weekly sheet cells: smaller chips that stack */
+.sheet-table td, .sheet-table th { padding: 12px 10px; }
+.sheet-table td.on, .sheet-table td { vertical-align: middle; }
+.sheet-table td:not(.sh-invs):not(.r):not(.wk) { overflow: visible; }
+.sheet-table .ts-site { display: block; width: fit-content; margin: 3px auto; padding: 2px 7px; font-size: 10.5px; line-height: 1.5; border-radius: 5px; }
+.sheet-table td.wk .ts-site { display: inline-block; margin: 2px 3px; }
+.sheet-table tbody tr { height: 48px; }
+/* Invoice viewer */
+.invview { width: min(860px, calc(100vw - 24px)); max-height: calc(100vh - 32px); padding: 0; display: flex; flex-direction: column; }
+.invview[open] { display: flex; }
+.iv-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.iv-head h3 { margin: 0; font-size: 16px; }
+.iv-body { overflow: auto; padding: 14px; background: rgba(0, 0, 0, .06); }
+.iv-sizer { overflow: hidden; }

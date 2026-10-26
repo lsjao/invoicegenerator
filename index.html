@@ -250,7 +250,7 @@ Anna Kowal
         <button class="btn primary" id="shPdf">Download sheet as PDF</button>
       </div>
     </div>
-    <p class="hint">Who worked where each day, with the invoice for each row. Click an invoice number to download its PDF. In the downloaded sheet, the invoice numbers link to the invoice pages attached behind it.</p>
+    <p class="hint">Who worked where each day, with the invoice for each row. Click an invoice number to open that invoice here. In the downloaded sheet, the invoice numbers link to the invoice pages attached behind it.</p>
     <div id="sheetWrap" class="sheet-wrap"></div>
   </div>
 </main>
@@ -416,6 +416,11 @@ Anna Kowal
       <button class="btn primary" value="ok">Import</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="invView" class="modal invview">
+  <div class="iv-head"><h3 id="ivTitle"></h3><div class="row gap"><button type="button" class="btn small primary" id="ivPdf">Download PDF</button><button type="button" class="btn small ghost" id="ivEdit">Edit</button><button type="button" class="btn small ghost" id="ivClose">Close</button></div></div>
+  <div class="iv-body" id="ivBody"></div>
 </dialog>
 
 <dialog id="exportDialog" class="modal wide">

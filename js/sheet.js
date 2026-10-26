@@ -31,7 +31,7 @@ window.initSheet = function () {
   const chips = rs => rs.map(r => `<span class="ts-site">${esc(r.site)}${r.qty !== 1 ? ' ×' + +r.qty.toFixed(2) : ''}</span>`).join('');
   const invLink = inv => inv.legacy
     ? `<span class="sh-past" title="Past record, no PDF">${esc(inv.number || 'Past record')}</span>`
-    : `<a href="#" class="sh-inv" data-inv="${esc(inv.id)}" title="Download ${esc(inv.number)} as PDF">${esc(inv.number)}</a>`;
+    : `<a href="#" class="sh-inv" data-inv="${esc(inv.id)}" title="Open ${esc(inv.number)}">${esc(inv.number)}</a>`;
 
   function block(wk) {
     const dates = DAYS.map((_, i) => P.addDays(wk.w, i)), end = dates[6];
@@ -60,7 +60,7 @@ window.initSheet = function () {
   $('#shPast').addEventListener('change', render);
   $('#sheetWrap').addEventListener('click', async e => {
     const a = e.target.closest('[data-inv]'); if (!a) return; e.preventDefault();
-    const inv = db.invoices.find(i => i.id === a.dataset.inv); if (inv) await window.IM.downloadInvoices([inv], 'separate', { mark: false });
+    const inv = db.invoices.find(i => i.id === a.dataset.inv); if (inv) window.IM.viewInvoice(inv);
   });
 
   // Downloadable sheet: landscape pages of the table, then (optionally) every invoice, with the invoice numbers linking to their pages

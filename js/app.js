@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v25 · 26 Oct 2026';
+  const APP_VERSION = 'v26 · 26 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -1163,6 +1163,19 @@
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     return true;
   }
+  // Open the saved invoice here, as it would appear in its PDF, without downloading anything
+  let viewing = null;
+  function viewInvoice(inv) {
+    viewing = inv; $('#ivTitle').textContent = `${inv.number || 'Past record'} · ${inv.from.name}`;
+    $('#ivBody').innerHTML = `<div class="iv-sizer">${renderInvoiceHTML(inv)}</div>`;
+    $('#ivEdit').hidden = !!inv.legacy;
+    $('#invView').showModal();
+    requestAnimationFrame(() => { const w = $('#ivBody').firstElementChild, page = w.firstElementChild, k = Math.min(1, ($('#ivBody').clientWidth - 8) / page.offsetWidth); page.style.transformOrigin = 'top left'; page.style.transform = `scale(${k})`; w.style.height = page.offsetHeight * k + 'px'; });
+  }
+  $('#ivClose').addEventListener('click', () => $('#invView').close());
+  $('#ivPdf').addEventListener('click', () => viewing && downloadInvoices([viewing], 'separate', { mark: false }));
+  $('#ivEdit').addEventListener('click', () => { if (viewing) { $('#invView').close(); window.IM.loadForEdit(viewing); } });
+  window.IM.viewInvoice = viewInvoice;
   window.IM.saveBlob = saveBlob;
   window.IM.downloadInvoices = downloadInvoices; window.IM.toast = toast;
   async function downloadInvoices(list, mode, opts = {}) {
