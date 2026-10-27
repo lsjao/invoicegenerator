@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v29 · 26 Oct 2026';
+  const APP_VERSION = 'v30 · 27 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -400,8 +400,17 @@
 
   let batch = [], selBatch = -1;
   function extract() {
-    const text = $('#pasteBox').value.trim();
+    let text = $('#pasteBox').value.trim();
     if (!text) return toast('Paste some details first');
+    rosterNote = '';
+    if (P.looksLikeRoster(text)) {   // weekday headings with a property code and a list of first names under each
+      const ro = P.parseRoster(text, db);
+      text = ro.text;
+      const shown = ro.matches.filter(m => m.how !== 'exact');
+      const bad = ro.matches.filter(m => m.how === 'new' || m.how === 'ambiguous');
+      rosterNote = `<div class="roster-note"><b>Read as a daily roster.</b> ${shown.length ? 'Matched names: ' + shown.filter(m => !bad.includes(m)).map(m => `${esc(m.written)} → <b>${esc(m.name)}</b>`).join(', ') + '.' : ''}
+        ${bad.length ? `<div class="roster-warn">Check: ${bad.map(m => m.how === 'ambiguous' ? `“${esc(m.written)}” could be ${m.options.map(esc).join(' or ')}` : `“${esc(m.written)}” is not a saved subcontractor, so it will be added as new`).join('; ')}. Type the full name in the paste box to fix it.</div>` : ''}</div>`;
+    }
     const { header, segments } = P.splitBatch(text, db);
     if (segments.length > 1) return extractBatch(header, segments);
 
@@ -453,6 +462,7 @@
     let n = nextFree();
     batch.forEach(inv => { if (inv._autoNumber) inv.number = db.settings.prefix + pad4(n++); });
   }
+  let rosterNote = '';
   function extractBatch(header, segments) {
     batch = segments.map(seg => {
       const inv = blankInvoice({ weekStart: cur.weekStart, to: cur.to, template: cur.template });
@@ -479,7 +489,7 @@
     if (!batch.length) { selBatch = -1; renderPreview(); return; }
     const n = batch.filter(i => i._include).length;
     const mode = db.settings.dlMode;
-    box.innerHTML = `
+    box.innerHTML = `${rosterNote}
       <div class="small muted">Found ${batch.length} subcontractors · one invoice each · click a card to jump to its preview</div>
       <div class="batch">${batch.map((inv, i) => {
         const t = totals(inv), miss = missingFor(inv), days = inv.items.map(x => x.date).filter(Boolean).sort();
@@ -598,7 +608,7 @@
   });
   $('#extractBtn').addEventListener('click', extract);
   $('#pasteBox').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); extract(); } });
-  $('#clearPaste').addEventListener('click', () => { $('#pasteBox').value = ''; $('#extractResult').hidden = true; batch = []; selBatch = -1; renderPreview(); });
+  $('#clearPaste').addEventListener('click', () => { rosterNote = ''; $('#pasteBox').value = ''; $('#extractResult').hidden = true; batch = []; selBatch = -1; renderPreview(); });
 
   /* ---------- Past invoices: records only. No invoice number is used. Numbered invoices are never changed. ---------- */
   let past = [], pastSkipped = [], pastNew = { subs: {}, sites: {} }, pastOnlyDup = false;

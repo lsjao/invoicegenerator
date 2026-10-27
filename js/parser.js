@@ -390,6 +390,81 @@
     return { code: key.length <= 10 && !/\s/.test(from) ? key : from, from, how: 'unknown' };
   }
 
+
+  /*
+   * Roster format: weekday headings, a property code, then the people on that property that day.
+   *   for the week of october 19 / Monday: / 19mr / Andrej / Sergej Gudima / 122gr / Alex ...
+   * Each name under a code is one day on that property. Names are matched to saved subcontractors
+   * by first name, short form or spelling (Andrej, Alex, Roma, Yuri) and reported back for checking.
+   */
+  const WEEKDAY_LINE = /^(mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|sun)(?:day|sday|nesday|rsday|urday)?\s*:?$/i;
+  const DAY_IDX = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: -1 };
+  function looksLikeRoster(text) {
+    return String(text || '').split(/\r?\n/).filter(l => WEEKDAY_LINE.test(l.trim())).length >= 2;
+  }
+  // Spelling-insensitive key: Andrej/Andrei, Yuri/Jurijs, Alex/Aleks all line up
+  const nameKey = w => w.toLowerCase().replace(/[^a-zа-я]/g, '').replace(/y/g, 'j').replace(/j/g, 'i').replace(/x/g, 'ks').replace(/(.)\1+/g, '$1');
+  function matchPerson(written, subs) {
+    const q = String(written).trim().split(/\s+/).map(nameKey).filter(Boolean);
+    if (!q.length) return { name: written, how: 'none' };
+    const cands = [];
+    (subs || []).forEach(sub => [sub.name, ...(sub.aliases || [])].forEach(label => {
+      const toks = String(label).split(/\s+/).map(nameKey).filter(Boolean);
+      const full = toks.join(' ') === q.join(' ');
+      const hit = q.every(t => toks.some(k => k === t || (t.length >= 3 && k.startsWith(t)) || (t.length >= 5 && lev(k, t) <= 1)));
+      if (full || hit) cands.push({ sub, full });
+    }));
+    const full = [...new Set(cands.filter(c => c.full).map(c => c.sub.name))];
+    if (full.length === 1) return { name: full[0], how: written.trim() === full[0] ? 'exact' : 'spelling' };
+    const names = [...new Set(cands.map(c => c.sub.name))];
+    if (names.length === 1) return { name: names[0], how: 'short' };
+    if (names.length > 1) return { name: String(written).trim(), how: 'ambiguous', options: names };
+    return { name: String(written).trim(), how: 'new' };
+  }
+  function parseRoster(text, db) {
+    const lines = String(text).split(/\r?\n/).map(l => l.trim());
+    // week header: "for the week of october 19 [2026]"
+    const today = new Date();
+    let monday = null;
+    const hm = String(text).match(new RegExp('week\\s+(?:of|commencing|starting|beginning)\\s+(?:' + MON + '\\s+(\\d{1,2})(?:st|nd|rd|th)?|(\\d{1,2})(?:st|nd|rd|th)?\\s+(' + MON + '))(?:,?\\s+(\\d{4}))?', 'i'));
+    if (hm) {
+      const mname = (String(text).match(new RegExp('week\\s+(?:of|commencing|starting|beginning)\\s+(' + MON + '|\\d{1,2}(?:st|nd|rd|th)?\\s+(' + MON + '))', 'i')) || [])[0] || '';
+      const mi = MONTHS.indexOf((mname.match(/[a-z]{3,}/gi) || []).map(x => x.toLowerCase()).filter(x => MONTHS.includes(x.slice(0, 3)) && x.length >= 3).map(x => x.slice(0, 3))[0]);
+      const day = +(hm[1] || hm[2]);
+      let year = hm[4] ? +hm[4] : null;
+      if (mi >= 0 && day) {
+        if (!year) { year = today.getFullYear(); let best = null; [year - 1, year, year + 1].forEach(y => { const t = toISO(y, mi + 1, day); if (t && new Date(t + 'T00:00:00Z').getUTCDay() === 1) best = best && Math.abs(new Date(best) - today) < Math.abs(new Date(t) - today) ? best : t; }); monday = best || toISO(year, mi + 1, day); }
+        else monday = toISO(year, mi + 1, day);
+        if (monday) monday = mondayOf(monday);
+      }
+    }
+    if (!monday) monday = mondayOf(today.toISOString().slice(0, 10));
+    const people = {}, order = [], matches = {};
+    let day = null, site = '';
+    for (const l of lines) {
+      if (!l || /^(for\s+)?the\s+week\b|^week\s+(of|commencing)/i.test(l)) continue;
+      const wd = l.match(WEEKDAY_LINE);
+      if (wd) { day = DAY_IDX[wd[1].toLowerCase().slice(0, 3)]; site = ''; continue; }
+      if (day === null) continue;
+      const code = l.replace(/[:\s]+$/, '');
+      if (/^\d{1,3}\s?[A-Za-z]{1,5}$/.test(code) || /^(maintenance|office|yard)$/i.test(code)) { site = /^\d/.test(code) ? code.replace(/\s+/g, '').toUpperCase() : code[0].toUpperCase() + code.slice(1).toLowerCase(); continue; }
+      if (!site) continue;
+      const nm = l.replace(/[:,;.]+$/, '');
+      const key = nm.toLowerCase();
+      const m = matches[key] || (matches[key] = { written: nm, ...matchPerson(nm, db && db.subs) });
+      const who = people[m.name] || (people[m.name] = {}); if (!order.includes(m.name)) order.push(m.name);
+      const set = who[site] || (who[site] = []);
+      const iso = addDays(monday, day === -1 ? -1 : day);
+      if (!set.includes(iso)) set.push(iso);
+    }
+    const dd = iso => iso.slice(8) + '/' + iso.slice(5, 7) + '/' + iso.slice(2, 4);
+    const dn = iso => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(iso + 'T00:00:00Z').getUTCDay()];
+    const mdate = new Date(monday + 'T00:00:00Z');
+    const header = `For the week of ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][mdate.getUTCMonth()]} ${mdate.getUTCDate()}, ${mdate.getUTCFullYear()}:`;
+    const body = order.map(name => name + '\n' + Object.entries(people[name]).map(([st, ds]) => `${ds.length} x ${st} (${ds.slice().sort().map(d => dn(d) + ' ' + dd(d)).join(', ')})`).join('\n')).join('\n\n');
+    return { text: header + '\n\n' + body, monday, matches: Object.values(matches) };
+  }
+
   /*
    * Past invoices: one record per line, "date  Name - Subcontractor - SITE  amount"
    * (tab separated from a spreadsheet, or plain spaces). An optional reference can be a further
@@ -485,5 +560,5 @@
     return sure > 0 && sure >= (rows.length + skipped.length) * 0.6;
   }
 
-  window.InvoiceParser = { parse, splitBatch, resolveSite, parsePastRecords, looksLikePast, lev, parseDate, mondayOf, addDays };
+  window.InvoiceParser = { parseRoster, looksLikeRoster, parse, splitBatch, resolveSite, parsePastRecords, looksLikePast, lev, parseDate, mondayOf, addDays };
 })();
