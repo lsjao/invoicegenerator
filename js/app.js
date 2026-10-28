@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v30 · 27 Oct 2026';
+  const APP_VERSION = 'v31 · 28 Oct 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -1141,7 +1141,7 @@
   });
 
   /* ---------- PDF ---------- */
-  const fileName = inv => `${inv.number || 'Past record ' + inv.date} - ${(inv.from.name || '').trim().split(/\s+/).pop() || 'Invoice'}`.replace(/[\\/:*?"<>|]/g, '') + '.pdf';
+  const fileName = inv => `${inv.number || 'Past record ' + inv.date} - ${(inv.from.name || '').trim().replace(/\s+/g, ' ') || 'Invoice'}`.replace(/[\\/:*?"<>|]/g, '') + '.pdf';
   async function invoiceCanvas(inv, scale = 2.5) {
     const stage = $('#pdfStage');
     stage.innerHTML = renderInvoiceHTML(inv);
