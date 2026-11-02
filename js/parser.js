@@ -67,6 +67,21 @@
     return '';
   }
 
+
+  // Days written as paid in advance ("Monday 02/11/26 - paid in advance", "Paid Monday") are kept as £0 lines, not billed again
+  const ADVANCE = /\b(?:paid(?:\s+in\s+advance)?|pre-?paid|already\s+paid|advance(?:d)?(?:\s+paid)?|paid\s+up\s*front|no\s+charge|foc)\b/i;
+  function findAdvance(text) {
+    const dates = new Set(), days = new Set();
+    String(text).split(/[\n,;()]+/).forEach(piece => {
+      if (!ADVANCE.test(piece)) return;
+      const d = parseDate(piece);
+      if (d) { dates.add(d.iso); return; }
+      const w = piece.match(new RegExp('\\b(' + DAY + ')\\b', 'i'));
+      if (w) { const i = dayIdx(w[1]); if (i >= 0) days.add(i); }
+    });
+    return { dates, days };
+  }
+
   function parse(text, db) {
     const out = { from: {}, to: null, items: [], found: [], warnings: [] };
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -288,6 +303,14 @@
         site: e.site, label: e.label, qty: e.qty,
         price: e.price != null ? e.price : (out.rate || 0), vat: 'none'
       }));
+      if (!out.paid && entries.some(e => e.named)) {
+        const adv = findAdvance(text);
+        out.items.forEach(it => {
+          if (!it.date) return;
+          const dow = new Date(it.date + 'T00:00:00Z').getUTCDay();
+          if (adv.dates.has(it.date) || adv.days.has(dow === 0 ? 6 : dow - 1) || /^paid\b/i.test(it.label || '')) { it.price = 0; it.label = 'Paid in advance'; it.advance = true; out.warnings.push(`${shortDay(it.date)} kept as paid in advance (£0)`); }
+        });
+      }
       // Dates outside the stated week are likely typos
       if (out.weekStart) out.items.forEach(it => { if (it.date && (it.date < out.weekStart || it.date > addDays(out.weekStart, 6))) out.warnings.push(`${shortDay(it.date)} is outside the week of ${shortDay(out.weekStart)}`); });
       if (!wc && entries.some(e => !e.date)) out.warnings.push('No dates or week given for some days');

@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v31 · 28 Oct 2026';
+  const APP_VERSION = 'v32 · 2 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -36,7 +36,7 @@
       rate: i.rate === '' || i.rate == null ? '' : numOr(i.rate),
       from: { name: str(i.from?.name, 200), addr: str(i.from?.addr, 400), accName: str(i.from?.accName, 200), accNo: str(i.from?.accNo, 40), sort: str(i.from?.sort, 20) },
       to: { name: str(i.to?.name, 200), addr: str(i.to?.addr, 400) },
-      items: arr(i.items).map(it => ({ ...(it.lump ? { lump: true } : {}), ...(ISO.test(it.week) ? { week: it.week } : {}), date: isoOr(it.date), site: str(it.site, 60), label: str(it.label, 60),
+      items: arr(i.items).map(it => ({ ...(it.lump ? { lump: true } : {}), ...(it.advance ? { advance: true } : {}), ...(ISO.test(it.week) ? { week: it.week } : {}), date: isoOr(it.date), site: str(it.site, 60), label: str(it.label, 60),
         qty: numOr(it.qty, 1), price: numOr(it.price), vat: VATS.includes(String(it.vat)) ? String(it.vat) : 'none' })) };
     if (depth === 0 && i.prev && typeof i.prev === 'object') c.prev = cleanInvoice(i.prev, 1);   // the version before a replace, so it can be undone
     else delete c.prev;
@@ -167,7 +167,7 @@
   function applySub(sub, inv = cur) {
     if (!sub) return;
     Object.assign(inv.from, { name: sub.name, addr: sub.addr || '', accName: sub.accName || sub.name, accNo: sub.accNo || '', sort: sub.sort || '' });
-    if (sub.rate) { inv.rate = sub.rate; inv.items.forEach(it => { if (!+it.price) it.price = +sub.rate; }); }
+    if (sub.rate) { inv.rate = sub.rate; inv.items.forEach(it => { if (!+it.price && !isFree(it)) it.price = +sub.rate; }); }
     if (sub.vat) { inv.vatAll = sub.vat; inv.items.forEach(it => (it.vat = sub.vat)); }
     if (inv !== cur || (!numberTouched && !editingId)) inv.number = numberFor(sub);
   }
@@ -371,7 +371,7 @@
       inv.items = r.items.map(it => {
         const res = P.resolveSite(it.site, db.sites);
         if (res.how && it.site) inv._fixes.push(res);
-        return { ...it, site: res.code, price: it.price || +inv.rate || 0, vat };
+        return { ...it, site: res.code, price: it.price || (it.advance ? 0 : +inv.rate || 0), vat };
       });
     }
     return sub;
@@ -559,7 +559,7 @@
     if (t.hasAttribute('data-bpaiddate')) { batch[t.closest('[data-bi]').dataset.bi].paidDate = t.value; renderPreview(); return; }
     if (e.target.hasAttribute('data-brate')) {
       const inv = batch[e.target.closest('[data-bi]').dataset.bi], v = +e.target.value;
-      if (v > 0) { inv.rate = v; inv.items.forEach(it => { if (!+it.price) it.price = v; }); inv._include = !problems(inv).length; renderBatch(); }
+      if (v > 0) { inv.rate = v; inv.items.forEach(it => { if (!+it.price && !isFree(it)) it.price = v; }); inv._include = !problems(inv).length; renderBatch(); }
       return;
     }
     if (!e.target.hasAttribute('data-binc')) return;
@@ -919,12 +919,14 @@
   }
 
   /* ---------- Finish step ---------- */
+  // A £0 line is fine when it is marked as paid in advance (or no charge)
+  const isFree = it => !!it.advance || /^(paid|prepaid|pre-paid|foc|no charge)\b/i.test(it.label || '');
   function problems(inv) {
     const p = [];
     if (!inv.from.name) p.push('Subcontractor name');
     if (!inv.number && !inv.legacy) p.push('Reference number');
     if (!inv.items.length) p.push('At least one work line');
-    if (inv.items.some(i => !+i.price)) p.push('Price on every line');
+    if (inv.items.some(i => !+i.price && !isFree(i))) p.push('Price on every line');
     return p;
   }
   function renderChecklist() {
@@ -940,19 +942,24 @@
     $('#checkList').innerHTML = [
       `<div class="ok">${esc(cur.from.name || '?')} → ${esc(cur.to.name || '?')}</div>`,
       `<div class="ok">${esc(cur.number)} · ${longDate(cur.date)} · ${cur.items.length} line(s) · Total £${money(t.total)}${t.vatTotal ? ` incl. VAT £${money(t.vatTotal)}` : ' · No VAT'}</div>`,
-      ...bad.map(b => `<div class="warn">Required: ${b}</div>`),
+      ...bad.map(b => `<div class="warn">Required: ${b}${b.startsWith('Price') ? ' <button type="button" class="btn small ghost" data-markadv>Mark £0 lines as paid in advance</button>' : ''}</div>`),
       ...warn.map(w => `<div class="warn">${esc(w)}</div>`)
     ].join('');
     $('#addToQueue').textContent = editingId ? 'Update invoice' : 'Add to queue';
   }
 
+  document.addEventListener('click', e => {
+    if (!e.target.closest('[data-markadv]')) return;
+    let n = 0; cur.items.forEach(it => { if (!+it.price && !isFree(it)) { it.advance = true; it.label = 'Paid in advance'; n++; } });
+    renderItems(); onChange(); renderChecklist(); toast(n ? `${n} line${n === 1 ? '' : 's'} marked as paid in advance` : 'No £0 lines found');
+  });
   function remember(inv) {
     let sub = findSub(inv.from.name);
     if (!sub) { sub = { id: uid(), name: inv.from.name, rate: '', vat: '', aliases: [] }; db.subs.push(sub); }
     Object.assign(sub, { addr: inv.from.addr, accName: inv.from.accName, accNo: inv.from.accNo, sort: inv.from.sort });
     if (inv.from.phone) sub.phone = inv.from.phone;
     if (inv.from.email) sub.email = inv.from.email;
-    const rate = +(inv.items.find(it => !it.lump) || {}).price;
+    const rate = +(inv.items.find(it => !it.lump && +it.price > 0) || {}).price;
     if (!sub.rate && rate) sub.rate = rate;
     bumpNumber(inv, sub);
     if (inv.to.name && !db.clients.find(c => c.name === inv.to.name)) db.clients.push({ id: uid(), name: inv.to.name, addr: inv.to.addr });
