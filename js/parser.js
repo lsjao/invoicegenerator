@@ -456,9 +456,13 @@
       const day = +(hm[1] || hm[2]);
       let year = hm[4] ? +hm[4] : null;
       if (mi >= 0 && day) {
-        if (!year) { year = today.getFullYear(); let best = null; [year - 1, year, year + 1].forEach(y => { const t = toISO(y, mi + 1, day); if (t && new Date(t + 'T00:00:00Z').getUTCDay() === 1) best = best && Math.abs(new Date(best) - today) < Math.abs(new Date(t) - today) ? best : t; }); monday = best || toISO(year, mi + 1, day); }
-        else monday = toISO(year, mi + 1, day);
-        if (monday) monday = mondayOf(monday);
+        if (!year) {   // the year nearest to today, whatever weekday the date falls on
+          let best = null;
+          [today.getFullYear() - 1, today.getFullYear(), today.getFullYear() + 1].forEach(y => { const t = toISO(y, mi + 1, day); if (t && (!best || Math.abs(new Date(t) - today) < Math.abs(new Date(best) - today))) best = t; });
+          monday = best;
+        } else monday = toISO(year, mi + 1, day);
+        // a Sunday starts the week (Sunday-first weeks), any other day belongs to the week's Monday
+        if (monday) monday = new Date(monday + 'T00:00:00Z').getUTCDay() === 0 ? addDays(monday, 1) : mondayOf(monday);
       }
     }
     if (!monday) monday = mondayOf(today.toISOString().slice(0, 10));
@@ -485,7 +489,7 @@
     const mdate = new Date(monday + 'T00:00:00Z');
     const header = `For the week of ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][mdate.getUTCMonth()]} ${mdate.getUTCDate()}, ${mdate.getUTCFullYear()}:`;
     const body = order.map(name => name + '\n' + Object.entries(people[name]).map(([st, ds]) => `${ds.length} x ${st} (${ds.slice().sort().map(d => dn(d) + ' ' + dd(d)).join(', ')})`).join('\n')).join('\n\n');
-    return { text: header + '\n\n' + body, monday, matches: Object.values(matches) };
+    return { text: header + '\n\n' + body, monday, matches: Object.values(matches), week: `${dn(monday)} ${dd(monday)} to ${dn(addDays(monday, 4))} ${dd(addDays(monday, 4))}` };
   }
 
   /*

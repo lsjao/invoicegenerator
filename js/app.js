@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v33 · 2 Nov 2026';
+  const APP_VERSION = 'v34 · 2 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -411,7 +411,7 @@
       text = ro.text;
       const shown = ro.matches.filter(m => m.how !== 'exact');
       const bad = ro.matches.filter(m => m.how === 'new' || m.how === 'ambiguous');
-      rosterNote = `<div class="roster-note"><b>Read as a daily roster.</b> ${shown.length ? 'Matched names: ' + shown.filter(m => !bad.includes(m)).map(m => `${esc(m.written)} → <b>${esc(m.name)}</b>`).join(', ') + '.' : ''}
+      rosterNote = `<div class="roster-note"><b>Read as a daily roster for ${esc(ro.week)}.</b> ${shown.length ? 'Matched names: ' + shown.filter(m => !bad.includes(m)).map(m => `${esc(m.written)} → <b>${esc(m.name)}</b>`).join(', ') + '.' : ''}
         ${bad.length ? `<div class="roster-warn">Check: ${bad.map(m => m.how === 'ambiguous' ? `“${esc(m.written)}” could be ${m.options.map(esc).join(' or ')}` : `“${esc(m.written)}” is not a saved subcontractor, so it will be added as new`).join('; ')}. Type the full name in the paste box to fix it.</div>` : ''}</div>`;
     }
     const { header, segments } = P.splitBatch(text, db);
@@ -424,13 +424,13 @@
     batch = []; selBatch = -1;
     const r = P.parse(text, db);
     applyParse(cur, r);
-    cur.src = text;
+    cur.src = text; farWarn(cur);
     if (r.number) numberTouched = true;
     fillForm(); onChange();
     const missing = missingFor(cur);
     const box = $('#extractResult');
     box.hidden = false;
-    box.innerHTML = `
+    box.innerHTML = `${rosterNote}
       <div class="small muted">Found</div>
       <div class="chips">${r.found.map(f => `<span class="chip"><b>${esc(f.label)}:</b> ${esc(f.value)}</span>`).join('') || '<span class="muted small">Nothing recognised</span>'}</div>
       <div class="row gap" style="margin:4px 0">${formatPill(cur)}</div>
@@ -466,6 +466,12 @@
     let n = nextFree();
     batch.forEach(inv => { if (inv._autoNumber) inv.number = db.settings.prefix + pad4(n++); });
   }
+  // Work dates far from today usually mean a wrong year
+  function farWarn(inv) {
+    const ds = inv.items.map(i => i.date).filter(Boolean).sort(); if (!ds.length) return;
+    const wk = Math.round((new Date(ds[0]) - new Date()) / 6048e5);
+    if (Math.abs(wk) > 6) (inv._warn = inv._warn || []).push(`Dates are ${Math.abs(wk)} weeks ${wk > 0 ? 'ahead of' : 'before'} today, check the year`);
+  }
   let rosterNote = '';
   function extractBatch(header, segments) {
     batch = segments.map(seg => {
@@ -473,6 +479,7 @@
       const r = P.parse(header ? header + '\n' + seg : seg, db);
       applyParse(inv, r);
       inv.src = (header ? header + '\n' : '') + seg;
+      farWarn(inv);
       inv._autoNumber = !r.number;
       inv._ov = overlapsFor(inv);
       inv._ovAct = inv._ov.length ? (inv._ov.some(o => o.all) ? 'skip' : 'new') : '';   // never double-bill by default
@@ -975,6 +982,16 @@
     db.rates.sort((a, b) => a - b);
   }
 
+  // New or removed invoices move every dependent view on: the timesheet jumps to the latest week and open tabs redraw
+  function refreshViews() {
+    window.Timesheet && window.Timesheet.reset();
+    const open = (document.querySelector('.view:not([hidden])') || {}).dataset;
+    const v = open && open.view;
+    if (v === 'sheet' && window.Sheet) window.Sheet.render();
+    if (v === 'props' && window.Properties) window.Properties.render();
+    if (v === 'timesheet' && window.Timesheet) window.Timesheet.render();
+    if (v === 'dash' && window.Dashboard) window.Dashboard.render();
+  }
   function commitCurrent() {
     const bad = problems(cur);
     if (bad.length) { toast('Missing: ' + bad.join(', ')); return null; }
@@ -995,7 +1012,7 @@
       inv.id = uid(); inv.createdAt = new Date().toISOString(); inv.selected = true; inv.archived = false; inv.downloadedAt = null;
       db.invoices.push(inv);
     }
-    saveNow(); updateBadge();
+    saveNow(); updateBadge(); refreshViews();
     return inv;
   }
   // Ask what to do when days on this invoice are already on another numbered invoice
@@ -1040,6 +1057,8 @@
   function queueItems() {
     const st = db.settings.qStatus || 'all';
     return db.invoices.filter(i => ($('#showArchived').checked || !i.archived) && (st === 'all' || (st === 'paid') === !!i.paid)).slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')); }
+  // Weeks between today and an invoice's first work date, for catching a wrong year
+  function yearOff(inv) { const ds = inv.items.map(i => i.date || i.week).filter(Boolean).sort(); return ds.length ? Math.round((new Date(ds[0]) - new Date()) / 6048e5) : 0; }
   function renderQueue() {
     const items = queueItems();
     $('#queueEmpty').hidden = items.length > 0;
@@ -1058,6 +1077,7 @@
         <div class="q-act">
           ${inv.paid ? `<button class="pill paid pay-btn" data-act="paid" title="Change paid date or mark unpaid">Paid ${inv.paidDate ? shortDate(inv.paidDate) : ''}</button>`
             : `<button class="btn small pay-btn unpaid" data-act="paid" title="Mark as paid">Mark paid</button>`}
+          ${!inv.legacy && Math.abs(yearOff(inv)) > 26 ? `<button class="btn small danger ghost" data-act="shift" title="Work dates look like the wrong year">Fix year</button>` : ''}
           <button class="btn small ghost" data-act="pdf" title="Download">PDF</button>
           <button class="btn small ghost" data-act="edit">Edit</button>
           <button class="btn small ghost" data-act="dup" title="Copy for next week">Copy</button>
@@ -1084,7 +1104,7 @@
     const top = Math.max(0, ...db.invoices.filter(i => !i.legacy).map(numOf));   // past-record references never count
     const before = db.settings.nextNo;
     if (list.some(i => !i.legacy && numOf(i) === before - 1)) db.settings.nextNo = top + 1;
-    saveNow(); renderQueue(); fillForm();
+    saveNow(); renderQueue(); fillForm(); refreshViews();
     if (!editingId && !numberTouched) { cur.number = numberFor(); fillForm(); renderPreview(); }
     toast(`${list.length} invoice(s) deleted${db.settings.nextNo !== before ? ` · next number ${numberFor()}` : ''}`, 4000);
   }
@@ -1123,6 +1143,14 @@
     const inv = db.invoices.find(i => i.id === e.target.closest('li').dataset.id);
     if (act === 'del') { if (await ask(`Delete ${inv.number} for ${inv.from.name}? It will also leave the dashboard.`, 'Delete')) deleteInvoices([inv]); }
     if (act === 'edit') { loadForEdit(inv); }
+    if (act === 'shift') {
+      const w = yearOff(inv), dir = w > 0 ? -364 : 364;
+      if (await ask(`${inv.number}: work dates are ${Math.abs(w)} weeks ${w > 0 ? 'ahead of' : 'before'} today. Move them ${w > 0 ? 'back' : 'forward'} 52 weeks, keeping the same weekdays?`, 'Move dates')) {
+        const mv = d => (d ? P.addDays(d, dir) : d);
+        inv.items.forEach(it => { it.date = mv(it.date); if (it.week) it.week = mv(it.week); }); inv.weekStart = mv(inv.weekStart);
+        saveNow(); renderQueue(); refreshViews(); toast(`${inv.number} dates moved ${w > 0 ? 'back' : 'forward'} 52 weeks`);
+      }
+    }
     if (act === 'paid') { await markPaidFlow([inv]); }
     if (act === 'pdf') { await downloadInvoices([inv], 'separate'); }
     if (act === 'dup') {
