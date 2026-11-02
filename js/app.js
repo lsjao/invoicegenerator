@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v34 · 2 Nov 2026';
+  const APP_VERSION = 'v35 · 3 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -67,8 +67,17 @@
   // Every save also refreshes the auto-save file (if one is set up): it holds the same encrypted setup data
   const fileText = () => window.Vault.exportBackup(db);
   const autoFile = () => window.AutoFile && window.AutoFile.schedule(fileText);
-  function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { window.Vault.save(db); autoFile(); }, 150); }
-  function saveNow() { clearTimeout(saveTimer); window.Vault.save(db); autoFile(); }
+  function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { window.Vault.save(db); autoFile(); redrawViews(); }, 150); }
+  function saveNow() { clearTimeout(saveTimer); window.Vault.save(db); autoFile(); redrawViews(); }
+  // Whatever data tab is open is redrawn after every save, so it never shows stale numbers
+  function redrawViews() {
+    const v = ((document.querySelector('.view:not([hidden])') || {}).dataset || {}).view;
+    if (v === 'sheet' && window.Sheet) window.Sheet.render();
+    else if (v === 'props' && window.Properties && !document.activeElement.closest('#propDetail')) window.Properties.render();
+    else if (v === 'timesheet' && window.Timesheet) window.Timesheet.render();
+    else if (v === 'dash' && window.Dashboard) window.Dashboard.render();
+    else if (v === 'queue') renderQueue();
+  }
 
   /* ---------- Helpers shared with templates ---------- */
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -984,7 +993,7 @@
 
   // New or removed invoices move every dependent view on: the timesheet jumps to the latest week and open tabs redraw
   function refreshViews() {
-    window.Timesheet && window.Timesheet.reset();
+    window.Timesheet && window.Timesheet.reset(); window.Dashboard && window.Dashboard.reset();
     const open = (document.querySelector('.view:not([hidden])') || {}).dataset;
     const v = open && open.view;
     if (v === 'sheet' && window.Sheet) window.Sheet.render();
