@@ -14,9 +14,10 @@ window.initDashboard = function () {
     const rows = [];
     for (const inv of db.invoices) {
       for (const it of inv.items) {
+        const credit = (+it.price || 0) < 0;   // an advance payment or credit: money only, never a day worked
         const net = (+it.qty || 0) * (+it.price || 0);
         const vat = it.vat !== 'none' && +it.vat > 0 ? net * +it.vat / 100 : 0;
-        rows.push({ inv, it, date: it.date || it.week || inv.date, isWeek: !it.date && !!it.week, sub: window.IM.canonSub(inv.from.name) || '(unnamed)', site: window.IM.canonSite(it.site) || '(no site)', qty: +it.qty || 0, days: it.lump ? 0 : (+it.qty || 0), net, vat, gross: net + vat });
+        rows.push({ inv, it, date: it.date || it.week || inv.date, isWeek: !it.date && !!it.week, sub: window.IM.canonSub(inv.from.name) || '(unnamed)', site: window.IM.canonSite(it.site || (credit ? ((inv.items.find(o => o.date === it.date && o.site) || inv.items.find(o => o.site) || {}).site) : '')) || '(no site)', qty: +it.qty || 0, days: it.lump || credit ? 0 : (+it.qty || 0), net, vat, gross: net + vat });
       }
     }
     return rows;
