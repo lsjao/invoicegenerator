@@ -2,6 +2,7 @@
 window.initTimesheet = function () {
   const $ = s => document.querySelector(s);
   const { db, P, esc, money, shortDate } = window.IM;
+  const gbp = n => (+n < 0 ? `(£${money(-n)})` : `£${money(n)}`);   // accounting notation: negatives in brackets
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];   // weeks start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const pad = n => String(n).padStart(2, '0');
@@ -31,12 +32,12 @@ window.initTimesheet = function () {
       const mine = wr.filter(r => r.sub === name);
       const days = mine.reduce((a, r) => a + r.days, 0), amt = mine.reduce((a, r) => a + r.gross, 0);
       const tds = dates.map((d, i) => { const l = mine.filter(r => !r.isWeek && r.date === d); if (l.length) perDay[i].add(name); return `<td class="${l.length ? 'on' : ''}">${cell(l)}</td>`; }).join('');
-      return `<tr><th scope="row">${esc(name)}</th>${tds}${hasWhole ? `<td class="${mine.some(r => r.isWeek) ? 'on wk' : ''}">${cell(mine.filter(r => r.isWeek))}</td>` : ''}<td class="r"><b>${+days.toFixed(1)}</b></td><td class="r">£${money(amt)}</td></tr>`;
+      return `<tr><th scope="row">${esc(name)}</th>${tds}${hasWhole ? `<td class="${mine.some(r => r.isWeek) ? 'on wk' : ''}">${cell(mine.filter(r => r.isWeek))}</td>` : ''}<td class="r"><b>${+days.toFixed(1)}</b></td><td class="r">${gbp(amt)}</td></tr>`;
     }).join('');
     const tot = wr.reduce((a, r) => a + r.days, 0), amt = wr.reduce((a, r) => a + r.gross, 0);
     $('#tsWeek').innerHTML = subs.length ? `<thead><tr><th>Subcontractor</th>${dates.map((d, i) => `<th class="c">${DAYS[i]}<small>${+d.slice(8)}</small></th>`).join('')}${hasWhole ? '<th class="c">Whole week<small>no daily split</small></th>' : ''}<th class="r">Days</th><th class="r">Amount</th></tr></thead>
       <tbody>${body}</tbody>
-      <tfoot><tr><th>On site</th>${perDay.map(s => `<td class="c">${s.size || ''}</td>`).join('')}${hasWhole ? '<td></td>' : ''}<td class="r"><b>${+tot.toFixed(1)}</b></td><td class="r"><b>£${money(amt)}</b></td></tr></tfoot>`
+      <tfoot><tr><th>On site</th>${perDay.map(s => `<td class="c">${s.size || ''}</td>`).join('')}${hasWhole ? '<td></td>' : ''}<td class="r"><b>${+tot.toFixed(1)}</b></td><td class="r"><b>${gbp(amt)}</b></td></tr></tfoot>`
       : '<tbody><tr><td class="nodata">No work recorded this week.</td></tr></tbody>';
   }
 
@@ -63,8 +64,8 @@ window.initTimesheet = function () {
     }).sort((x, y) => y.days - x.days);
     const n = v => (v ? +v.toFixed(1) : '');
     $('#tsTotals').innerHTML = data.length ? `<thead><tr><th>Subcontractor</th><th class="r">Days</th>${sites.map(s => `<th class="r">${esc(s)}</th>`).join('')}<th class="r">Weeks</th><th class="r">Invoices</th><th class="r">Amount</th><th class="r">Last worked</th></tr></thead>
-      <tbody>${data.map(d => `<tr><th scope="row">${esc(d.name)}</th><td class="r"><b>${n(d.days)}</b></td>${sites.map(s => `<td class="r">${n(d.bySite[s])}</td>`).join('')}<td class="r">${d.weeks}</td><td class="r">${d.invs}</td><td class="r">£${money(d.amt)}</td><td class="r">${d.last ? shortDate(d.last) : ''}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><th>Total</th><td class="r"><b>${n(data.reduce((x, d) => x + d.days, 0))}</b></td>${sites.map(s => `<td class="r">${n(data.reduce((x, d) => x + (d.bySite[s] || 0), 0))}</td>`).join('')}<td></td><td class="r">${new Set(rs.map(r => r.inv.id)).size}</td><td class="r"><b>£${money(data.reduce((x, d) => x + d.amt, 0))}</b></td><td></td></tr></tfoot>`
+      <tbody>${data.map(d => `<tr><th scope="row">${esc(d.name)}</th><td class="r"><b>${n(d.days)}</b></td>${sites.map(s => `<td class="r">${n(d.bySite[s])}</td>`).join('')}<td class="r">${d.weeks}</td><td class="r">${d.invs}</td><td class="r">${gbp(d.amt)}</td><td class="r">${d.last ? shortDate(d.last) : ''}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><th>Total</th><td class="r"><b>${n(data.reduce((x, d) => x + d.days, 0))}</b></td>${sites.map(s => `<td class="r">${n(data.reduce((x, d) => x + (d.bySite[s] || 0), 0))}</td>`).join('')}<td></td><td class="r">${new Set(rs.map(r => r.inv.id)).size}</td><td class="r"><b>${gbp(data.reduce((x, d) => x + d.amt, 0))}</b></td><td></td></tr></tfoot>`
       : '<tbody><tr><td class="nodata">No work recorded in this period.</td></tr></tbody>';
   }
 

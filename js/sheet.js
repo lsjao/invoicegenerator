@@ -2,6 +2,7 @@
 window.initSheet = function () {
   const $ = s => document.querySelector(s);
   const { db, P, esc, money } = window.IM;
+  const gbp = n => (+n < 0 ? `(£${money(-n)})` : `£${money(n)}`);   // accounting notation: negatives in brackets
   const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const sunOf = d => P.addDays(d, -new Date(d + 'T00:00:00Z').getUTCDay());
@@ -45,10 +46,10 @@ window.initSheet = function () {
         ? `<td colspan="7" class="on wk">${chips(x.whole)} <span class="sh-note">whole week</span></td>`
         : dates.map(d => { const l = x.dated.filter(r => r.date === d); return `<td class="${l.length ? 'on' : ''}">${chips(l)}</td>`; }).join('');
       const note = [x.whole.length && !onlyWhole ? 'plus whole-week line' : '', x.lump.length ? 'adjustment' : ''].filter(Boolean).join(', ');
-      return `<tr><th scope="row" class="l">${esc(x.name)}</th>${cells}<td class="r"><b>${n1(x.days)}</b></td><td class="c sh-invs">${x.invs.map(invLink).join('<br>')}${note ? `<span class="sh-note">${note}</span>` : ''}</td><td class="r">£${money(x.amt)}</td></tr>`;
+      return `<tr><th scope="row" class="l">${esc(x.name)}</th>${cells}<td class="r"><b>${n1(x.days)}</b></td><td class="c sh-invs">${x.invs.map(invLink).join('<br>')}${note ? `<span class="sh-note">${note}</span>` : ''}</td><td class="r">${gbp(x.amt)}</td></tr>`;
     }).join('');
-    const foot = `<tfoot><tr><th class="l">On site</th>${perDay.map(n => `<td class="c">${n || ''}</td>`).join('')}<td class="r"><b>${n1(totDays)}</b></td><td></td><td class="r"><b>£${money(wk.total)}</b></td></tr></tfoot>`;
-    return `<section class="sheet-week"><header class="sheet-head"><h3>${long(wk.w)} – ${long(end)} ${end.slice(0, 4)}</h3><span class="sh-sum">${wk.list.length} subcontractor${wk.list.length === 1 ? '' : 's'} · ${n1(totDays)} days · <b>£${money(wk.total)}</b></span></header><div class="table-wrap"><table class="data ts-grid sheet-table"><colgroup><col style="width:16%">${'<col style="width:7.5%">'.repeat(7)}<col style="width:6%"><col style="width:15%"><col style="width:11.5%"></colgroup>${head}<tbody>${rows}</tbody>${foot}</table></div></section>`;
+    const foot = `<tfoot><tr><th class="l">On site</th>${perDay.map(n => `<td class="c">${n || ''}</td>`).join('')}<td class="r"><b>${n1(totDays)}</b></td><td></td><td class="r"><b>${gbp(wk.total)}</b></td></tr></tfoot>`;
+    return `<section class="sheet-week"><header class="sheet-head"><h3>${long(wk.w)} – ${long(end)} ${end.slice(0, 4)}</h3><span class="sh-sum">${wk.list.length} subcontractor${wk.list.length === 1 ? '' : 's'} · ${n1(totDays)} days · <b>${gbp(wk.total)}</b></span></header><div class="table-wrap"><table class="data ts-grid sheet-table"><colgroup><col style="width:16%">${'<col style="width:7.5%">'.repeat(7)}<col style="width:6%"><col style="width:15%"><col style="width:11.5%"></colgroup>${head}<tbody>${rows}</tbody>${foot}</table></div></section>`;
   }
 
   function render() {

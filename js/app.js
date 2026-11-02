@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v32 · 2 Nov 2026';
+  const APP_VERSION = 'v33 · 2 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -30,7 +30,7 @@
   const VATS = ['none', '0', '5', '20'];
   const arr = v => (Array.isArray(v) ? v : []);
   function cleanInvoice(i, depth = 0) {
-    const c = { ...i, id: safeId(i.id), legacy: !!i.legacy, batch: str(i.batch, 20), batchAt: str(i.batchAt, 40), template: 'modern', number: str(i.number, 40), currency: 'GBP',
+    const c = { ...i, id: safeId(i.id), src: i.legacy ? '' : str(i.src, 6000), legacy: !!i.legacy, batch: str(i.batch, 20), batchAt: str(i.batchAt, 40), template: 'modern', number: str(i.number, 40), currency: 'GBP',
       date: isoOr(i.date) || todayISO(), due: isoOr(i.due), weekStart: isoOr(i.weekStart), paidDate: isoOr(i.paidDate), paid: !!i.paid, notTax: !!i.notTax, selected: !!i.selected, archived: !!i.archived,
       createdAt: str(i.createdAt, 40), downloadedAt: i.downloadedAt ? str(i.downloadedAt, 40) : null, site: str(i.site, 20), label: str(i.label, 60), vatAll: VATS.includes(String(i.vatAll)) ? String(i.vatAll) : 'none',
       rate: i.rate === '' || i.rate == null ? '' : numOr(i.rate),
@@ -72,7 +72,9 @@
 
   /* ---------- Helpers shared with templates ---------- */
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const money = n => (Math.round((+n || 0) * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money = n => { const v = Math.round((+n || 0) * 100) / 100, t = Math.abs(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); return v < 0 ? `(${t})` : t; };   // negatives in brackets
+  const gbp = n => (+n < 0 ? `(£${money(-n)})` : `£${money(n)}`);   // accounting notation: negatives in brackets
+
   const num = n => (+n || 0).toFixed(2);
   const parseISO = iso => { const [y, m, d] = iso.split('-').map(Number); return { y, m, d }; };
   const longDate = iso => { if (!iso) return ''; const { y, m, d } = parseISO(iso); return `${d} ${MONTHS[m - 1]} ${y}`; };
@@ -94,7 +96,7 @@
     return { sub, vat, vatTotal: vat.reduce((s, v) => s + v.amount, 0), total: sub + vat.reduce((s, v) => s + v.amount, 0) };
   }
   const H = { esc, money, num, longDate, lineDesc, totals, lines, vatLabel };
-  window.IM = { db, H, save, P, weekdayName, shortDate, esc, money };
+  window.IM = { db, H, save, P, weekdayName, shortDate, esc, money, gbp };
 
   function ask(message, okLabel = 'OK') {
     const d = $('#askDialog');
@@ -204,6 +206,7 @@
     $$('[data-modebody]').forEach(b => (b.hidden = b.dataset.modebody !== m));
     $('[data-view="create"]').classList.toggle('past-mode', m === 'past');
     $('[data-view="create"]').classList.toggle('form-mode', m === 'form');
+    if (m === 'form' && typeof updateBackToPaste === 'function') updateBackToPaste();
     if (m === 'past') renderPastUndo();
     renderPreview();
   }
@@ -316,7 +319,7 @@
   }
   function updateFormTotal() {
     const t = totals(cur);
-    $('#formTotal').textContent = cur.items.length ? `Subtotal £${money(t.sub)}${t.vatTotal ? `  ·  VAT £${money(t.vatTotal)}` : ''}  ·  Total £${money(t.total)}` : '';
+    $('#formTotal').textContent = cur.items.length ? `Subtotal ${gbp(t.sub)}${t.vatTotal ? `  ·  VAT ${gbp(t.vatTotal)}` : ''}  ·  Total ${gbp(t.total)}` : '';
   }
   $('#itemsBody').addEventListener('input', e => {
     const tr = e.target.closest('tr'); const f = e.target.dataset.f; if (!tr || !f) return;
@@ -421,6 +424,7 @@
     batch = []; selBatch = -1;
     const r = P.parse(text, db);
     applyParse(cur, r);
+    cur.src = text;
     if (r.number) numberTouched = true;
     fillForm(); onChange();
     const missing = missingFor(cur);
@@ -468,6 +472,7 @@
       const inv = blankInvoice({ weekStart: cur.weekStart, to: cur.to, template: cur.template });
       const r = P.parse(header ? header + '\n' + seg : seg, db);
       applyParse(inv, r);
+      inv.src = (header ? header + '\n' : '') + seg;
       inv._autoNumber = !r.number;
       inv._ov = overlapsFor(inv);
       inv._ovAct = inv._ov.length ? (inv._ov.some(o => o.all) ? 'skip' : 'new') : '';   // never double-bill by default
@@ -497,7 +502,7 @@
           <label class="toggle" title="Include"><input type="checkbox" data-binc${inv._include ? ' checked' : ''}${problems(inv).length ? ' disabled' : ''}><span></span></label>
           <div class="bthumb" data-bthumb="${i}" tabindex="0" aria-label="Preview ${esc(inv.from.name)}">${renderInvoiceHTML(inv)}</div>
           <div><b>${esc(inv.from.name || 'Unknown')}</b> ${formatPill(inv)}
-            <div class="muted">${inv.items.length} line(s)${days.length ? ` · ${shortDate(days[0])}–${shortDate(days[days.length - 1])}` : ''} · £${money(t.total)}${inv.number ? ' · ' + esc(inv.number) : ''}</div>
+            <div class="muted">${inv.items.length} line(s)${days.length ? ` · ${shortDate(days[0])}–${shortDate(days[days.length - 1])}` : ''} · ${gbp(t.total)}${inv.number ? ' · ' + esc(inv.number) : ''}</div>
             ${paidControl(inv, 'data-bpaid')}
             ${ovBox(inv)}
             <div class="chips">${warnChips(inv)}${fixChips(inv)}${miss.filter(m => m !== 'Rate').map(m => `<span class="chip miss">${m}</span>`).join('')}</div>
@@ -520,8 +525,8 @@
   function showBubble(el, inv) {
     const t = totals(inv);
     bubble.innerHTML = `<b>${esc(inv.from.name || 'Unknown')}</b><span class="muted small"> · ${esc(inv.number)}</span>
-      <table>${inv.items.map(it => `<tr><td>${esc(lineDesc(it))}</td><td class="r">${+it.qty !== 1 ? it.qty + ' × ' : ''}£${money(it.price)}</td></tr>`).join('')}
-      <tr class="tot"><td>Total${t.vatTotal ? ' incl. VAT' : ''}</td><td class="r">£${money(t.total)}</td></tr></table>`;
+      <table>${inv.items.map(it => `<tr><td>${esc(lineDesc(it))}</td><td class="r">${+it.qty !== 1 ? it.qty + ' × ' : ''}${gbp(it.price)}</td></tr>`).join('')}
+      <tr class="tot"><td>Total${t.vatTotal ? ' incl. VAT' : ''}</td><td class="r">${gbp(t.total)}</td></tr></table>`;
     bubble.hidden = false;
     const r = el.getBoundingClientRect();
     const left = Math.min(r.right + 10, window.innerWidth - bubble.offsetWidth - 10);
@@ -574,7 +579,7 @@
       const [inv] = batch.splice(+bi.dataset.bi, 1); selBatch = -1;
       cur = inv; editingId = null; numberTouched = !inv._autoNumber;
       delete cur._include; delete cur._autoNumber; delete cur._fixes; delete cur._format; delete cur._warn; delete cur._ov; delete cur._ovAct;
-      fillForm(); onChange(); setMode('form'); renderBatch();
+      fillForm(); onChange(); setMode('form'); renderBatch(); updateBackToPaste();
       return;
     }
     // Clicking a card (outside its controls) jumps the preview to that invoice
@@ -613,7 +618,7 @@
   /* ---------- Past invoices: records only. No invoice number is used. Numbered invoices are never changed. ---------- */
   let past = [], pastSkipped = [], pastNew = { subs: {}, sites: {} }, pastOnlyDup = false;
   const nv = (kind, key) => (pastNew[kind][key] = pastNew[kind][key] || { include: true, name: '', area: '', postcode: '' });
-  const recLabel = inv => { const site = (inv.items.find(it => it.site) || {}).site; return `${esc(inv.number || 'Past record')} · ${shortDate(inv.date)} · £${money(totals(inv).total)}${site ? ' · ' + esc(canonSite(site)) : ''}`; };
+  const recLabel = inv => { const site = (inv.items.find(it => it.site) || {}).site; return `${esc(inv.number || 'Past record')} · ${shortDate(inv.date)} · ${gbp(totals(inv).total)}${site ? ' · ' + esc(canonSite(site)) : ''}`; };
 
   // Existing invoices or records for the same person on the same date. "exact" also matches the amount and property.
   function pastMatches(r) {
@@ -689,25 +694,25 @@
         <label class="check"><input type="checkbox" id="pastOnlyDup"${pastOnlyDup ? ' checked' : ''}> Show only duplicates</label></div></div>`;
     const newPanel = !(nu.subs.length || nu.sites.length) ? '' : `<div class="past-new">
       <div class="past-new-head"><b>New in this paste</b> <span class="muted small">Tick what to save to your lists when you add the records. Property details are optional and can be filled in later.</span></div>
-      ${nu.subs.length ? `<div class="past-new-block"><div class="small muted">Subcontractors (${nu.subs.length})</div><div class="pn-chips">${nu.subs.map(x => { const k = x.name.toLowerCase(); return `<label class="pn-chip"><input type="checkbox" data-pnsub="${esc(k)}"${nv('subs', k).include ? ' checked' : ''}> ${esc(x.name)} <small>${x.n}× · £${money(x.total)}</small></label>`; }).join('')}</div></div>` : ''}
-      ${nu.sites.length ? `<div class="past-new-block"><div class="small muted">Properties (${nu.sites.length})</div>${nu.sites.map(x => { const st = nv('sites', x.code); return `<div class="pn-site" data-pnk="${esc(x.code)}"><label class="check"><input type="checkbox" data-pnsite${st.include ? ' checked' : ''}> <b>${esc(x.code)}</b> <small>${x.n}× · £${money(x.total)}</small></label><input data-pnf="name" placeholder="First line, e.g. 26A Lawford Road" value="${esc(st.name)}"><input data-pnf="area" placeholder="Area" value="${esc(st.area)}"><input data-pnf="postcode" placeholder="Postcode" value="${esc(st.postcode)}"></div>`; }).join('')}</div>` : ''}</div>`;
+      ${nu.subs.length ? `<div class="past-new-block"><div class="small muted">Subcontractors (${nu.subs.length})</div><div class="pn-chips">${nu.subs.map(x => { const k = x.name.toLowerCase(); return `<label class="pn-chip"><input type="checkbox" data-pnsub="${esc(k)}"${nv('subs', k).include ? ' checked' : ''}> ${esc(x.name)} <small>${x.n}× · ${gbp(x.total)}</small></label>`; }).join('')}</div></div>` : ''}
+      ${nu.sites.length ? `<div class="past-new-block"><div class="small muted">Properties (${nu.sites.length})</div>${nu.sites.map(x => { const st = nv('sites', x.code); return `<div class="pn-site" data-pnk="${esc(x.code)}"><label class="check"><input type="checkbox" data-pnsite${st.include ? ' checked' : ''}> <b>${esc(x.code)}</b> <small>${x.n}× · ${gbp(x.total)}</small></label><input data-pnf="name" placeholder="First line, e.g. 26A Lawford Road" value="${esc(st.name)}"><input data-pnf="area" placeholder="Area" value="${esc(st.area)}"><input data-pnf="postcode" placeholder="Postcode" value="${esc(st.postcode)}"></div>`; }).join('')}</div>` : ''}</div>`;
     box.innerHTML = `
       <div class="small muted">${past.length} record(s) found${pastSkipped.length ? ` · ${pastSkipped.length} line(s) not understood` : ''}.</div>
       ${dupBanner}${newPanel}
       <div class="table-wrap"><table class="data past-table">
         <thead><tr><th><input type="checkbox" id="pastAll"${past.length && past.every(r => r.action !== 'skip') ? ' checked' : ''} aria-label="Select all"></th><th>Date</th><th>Subcontractor</th><th>Property</th><th class="r">Amount</th><th>Reference (optional)</th><th>Check</th></tr></thead>
         <tbody>${past.map((r, i) => `<tr data-pi="${i}" class="${r.action === 'skip' ? 'off' : ''}${r.dup ? ' dup dup-' + r.dup : ''}"${pastOnlyDup && !r.dup ? ' hidden' : ''}>
-          <td><input type="checkbox" data-pinc${r.action !== 'skip' ? ' checked' : ''}></td><td>${shortDate(r.date)}</td><td>${esc(r.name)}</td><td>${esc(r.site)}</td><td class="r">£${money(r.amount)}</td>
+          <td><input type="checkbox" data-pinc${r.action !== 'skip' ? ' checked' : ''}></td><td>${shortDate(r.date)}</td><td>${esc(r.name)}</td><td>${esc(r.site)}</td><td class="r">${gbp(r.amount)}</td>
           <td><input data-pref value="${esc(r.ref)}" placeholder="none" size="10"></td><td><div class="chips">${chips(r)}</div>${dupBox(r)}</td></tr>`).join('')}</tbody></table></div>
       ${pastSkipped.length ? `<details class="past-skipped"><summary>${pastSkipped.length} line(s) not understood</summary><pre>${esc(pastSkipped.join('\n'))}</pre></details>` : ''}
-      <div class="batch-bar"><span class="muted small">${nAdd} to add${nRep ? ` · ${nRep} to replace` : ''}${nSkip ? ` · ${nSkip} skipped` : ''} · £${money(sum)} · numbering stays at ${esc(numberFor())}${nSaveSubs || nSaveSites ? ` · also saves ${[nSaveSubs ? nSaveSubs + ' subcontractor' + (nSaveSubs === 1 ? '' : 's') : '', nSaveSites ? nSaveSites + ' propert' + (nSaveSites === 1 ? 'y' : 'ies') : ''].filter(Boolean).join(' and ')}` : ''}</span>
+      <div class="batch-bar"><span class="muted small">${nAdd} to add${nRep ? ` · ${nRep} to replace` : ''}${nSkip ? ` · ${nSkip} skipped` : ''} · ${gbp(sum)} · numbering stays at ${esc(numberFor())}${nSaveSubs || nSaveSites ? ` · also saves ${[nSaveSubs ? nSaveSubs + ' subcontractor' + (nSaveSubs === 1 ? '' : 's') : '', nSaveSites ? nSaveSites + ' propert' + (nSaveSites === 1 ? 'y' : 'ies') : ''].filter(Boolean).join(' and ')}` : ''}</span>
         <button class="btn primary" id="pastAdd"${nAdd + nRep ? '' : ' disabled'}>${nRep ? `Add ${nAdd}, replace ${nRep}` : `Add ${nAdd} past record${nAdd === 1 ? '' : 's'}`}</button></div>`;
   }
   const pastBatches = () => { const g = {}; db.invoices.filter(i => i.legacy && i.batch).forEach(i => { (g[i.batch] = g[i.batch] || []).push(i); }); return Object.values(g).sort((a, b) => (b[0].batchAt || b[0].createdAt || '').localeCompare(a[0].batchAt || a[0].createdAt || '')); };
   function renderPastUndo() {
     const box = $('#pastUndo'), last = pastBatches()[0];
     box.hidden = !last;
-    if (last) { const reps = last.filter(i => i.prev).length; box.innerHTML = `<span class="small muted">Last import: ${last.length - reps} added${reps ? `, ${reps} replaced` : ''}, £${money(last.reduce((a, i) => a + totals(i).total, 0))}</span> <button class="btn small ghost danger" id="pastUndoBtn">Undo that import</button>`; }
+    if (last) { const reps = last.filter(i => i.prev).length; box.innerHTML = `<span class="small muted">Last import: ${last.length - reps} added${reps ? `, ${reps} replaced` : ''}, ${gbp(last.reduce((a, i) => a + totals(i).total, 0))}</span> <button class="btn small ghost danger" id="pastUndoBtn">Undo that import</button>`; }
   }
   function makePastRecord(r, ref, client, paid, batchId, at) {
     const sub = findSub(r.name);
@@ -825,9 +830,9 @@
     const us = unsavedSubs(), ut = unsavedSites();
     $('#reviewBody').innerHTML = (!us.length && !ut.length) ? '<p class="muted">Everything used in your invoices and records is already saved.</p>' : `
       ${us.length ? `<h4>Subcontractors (${us.length})</h4><p class="muted small">Tick the ones to add. Bank details and rates can be filled in later under Subcontractors. If a spelling is the same person as someone saved, merge it instead.</p>
-        <div class="table-wrap"><table class="data review-table"><thead><tr><th></th><th>Name in your records</th><th class="r">Records</th><th class="r">Total</th><th></th></tr></thead><tbody>${us.map(x => { const k = x.name.toLowerCase(); return `<tr data-rk="${esc(k)}"><td><input type="checkbox" data-rsub${rvSub(k).include ? ' checked' : ''}></td><td>${esc(x.name)}</td><td class="r">${x.n}</td><td class="r">£${money(x.total)}</td><td>${x.maybe ? `<button type="button" class="chip fix chip-btn" data-rmerge-sub="${esc(k)}">Same as ${esc(x.maybe.name)}? Merge</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : ''}
+        <div class="table-wrap"><table class="data review-table"><thead><tr><th></th><th>Name in your records</th><th class="r">Records</th><th class="r">Total</th><th></th></tr></thead><tbody>${us.map(x => { const k = x.name.toLowerCase(); return `<tr data-rk="${esc(k)}"><td><input type="checkbox" data-rsub${rvSub(k).include ? ' checked' : ''}></td><td>${esc(x.name)}</td><td class="r">${x.n}</td><td class="r">${gbp(x.total)}</td><td>${x.maybe ? `<button type="button" class="chip fix chip-btn" data-rmerge-sub="${esc(k)}">Same as ${esc(x.maybe.name)}? Merge</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : ''}
       ${ut.length ? `<h4>Properties (${ut.length})</h4><p class="muted small">Add the address if you have it. It is only used for labels and the dashboard.</p>
-        <div class="table-wrap"><table class="data review-table"><thead><tr><th></th><th>Code</th><th class="r">Lines</th><th class="r">Total</th><th>First line</th><th>Area</th><th>Postcode</th><th></th></tr></thead><tbody>${ut.map(x => { const st = rvSite(x.code); return `<tr data-rc="${esc(x.code)}"><td><input type="checkbox" data-rsite${st.include ? ' checked' : ''}></td><td><b>${esc(x.code)}</b></td><td class="r">${x.n}</td><td class="r">£${money(x.total)}</td><td><input data-rf="name" value="${esc(st.name)}" placeholder="e.g. 26A Lawford Road"></td><td><input data-rf="area" value="${esc(st.area)}" placeholder="Area"></td><td><input data-rf="postcode" value="${esc(st.postcode)}" placeholder="Postcode"></td><td>${x.maybe ? `<button type="button" class="chip fix chip-btn" data-rmerge-site="${esc(x.code)}">Same as ${esc(x.maybe.code)}? Merge</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : ''}`;
+        <div class="table-wrap"><table class="data review-table"><thead><tr><th></th><th>Code</th><th class="r">Lines</th><th class="r">Total</th><th>First line</th><th>Area</th><th>Postcode</th><th></th></tr></thead><tbody>${ut.map(x => { const st = rvSite(x.code); return `<tr data-rc="${esc(x.code)}"><td><input type="checkbox" data-rsite${st.include ? ' checked' : ''}></td><td><b>${esc(x.code)}</b></td><td class="r">${x.n}</td><td class="r">${gbp(x.total)}</td><td><input data-rf="name" value="${esc(st.name)}" placeholder="e.g. 26A Lawford Road"></td><td><input data-rf="area" value="${esc(st.area)}" placeholder="Area"></td><td><input data-rf="postcode" value="${esc(st.postcode)}" placeholder="Postcode"></td><td>${x.maybe ? `<button type="button" class="chip fix chip-btn" data-rmerge-site="${esc(x.code)}">Same as ${esc(x.maybe.code)}? Merge</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : ''}`;
     const n = us.filter(x => rvSub(x.name.toLowerCase()).include).length + ut.filter(x => rvSite(x.code).include).length;
     $('#reviewAdd').disabled = !n; $('#reviewAdd').textContent = n ? `Add ${n} selected` : 'Add selected';
   }
@@ -869,7 +874,7 @@
         wrap.classList.add('stack');
         box.style.transform = 'none'; box.style.height = 'auto'; box.style.width = 'auto'; wrap.style.height = '';
         box.innerHTML = batch.map((inv, i) => `<div class="stack-item${selBatch === i ? ' sel' : ''}${inv._include ? '' : ' off'}" data-stack="${i}">
-          <div class="stack-cap"><b>${i + 1} / ${batch.length}</b> ${esc(inv.from.name || 'Unknown')} · £${money(totals(inv).total)}${inv.paid ? ' · Paid' : ''}${inv._include ? '' : ' · not included'}</div>
+          <div class="stack-cap"><b>${i + 1} / ${batch.length}</b> ${esc(inv.from.name || 'Unknown')} · ${gbp(totals(inv).total)}${inv.paid ? ' · Paid' : ''}${inv._include ? '' : ' · not included'}</div>
           <div class="stack-page">${renderInvoiceHTML(inv)}</div></div>`).join('');
         fitStack();
         wrap.scrollTop = top;
@@ -941,7 +946,7 @@
     const bad = problems(cur);
     $('#checkList').innerHTML = [
       `<div class="ok">${esc(cur.from.name || '?')} → ${esc(cur.to.name || '?')}</div>`,
-      `<div class="ok">${esc(cur.number)} · ${longDate(cur.date)} · ${cur.items.length} line(s) · Total £${money(t.total)}${t.vatTotal ? ` incl. VAT £${money(t.vatTotal)}` : ' · No VAT'}</div>`,
+      `<div class="ok">${esc(cur.number)} · ${longDate(cur.date)} · ${cur.items.length} line(s) · Total ${gbp(t.total)}${t.vatTotal ? ` incl. VAT ${gbp(t.vatTotal)}` : ' · No VAT'}</div>`,
       ...bad.map(b => `<div class="warn">Required: ${b}${b.startsWith('Price') ? ' <button type="button" class="btn small ghost" data-markadv>Mark £0 lines as paid in advance</button>' : ''}</div>`),
       ...warn.map(w => `<div class="warn">${esc(w)}</div>`)
     ].join('');
@@ -1049,7 +1054,7 @@
         <div class="q-main"><b>${esc(inv.number || 'Past record')} · ${esc(inv.from.name)}</b>
           <span>${longDate(inv.date)}${days.length ? ` · work ${shortDate(days[0])}–${shortDate(days[days.length - 1])}` : (inv.items.find(i => i.week) ? ` · week of ${shortDate(inv.items.find(i => i.week).week)}` : '')}
           ${inv.legacy && inv.number ? ' · <span class="pill">Past record</span>' : ''}${runPill(inv)}${inv.downloadedAt ? ' · <span class="pill ok">Downloaded</span>' : ''}${inv.archived ? ' · <span class="pill">Archived</span>' : ''}</span></div>
-        <div class="q-amt">£${money(t.total)}</div>
+        <div class="q-amt">${gbp(t.total)}</div>
         <div class="q-act">
           ${inv.paid ? `<button class="pill paid pay-btn" data-act="paid" title="Change paid date or mark unpaid">Paid ${inv.paidDate ? shortDate(inv.paidDate) : ''}</button>`
             : `<button class="btn small pay-btn unpaid" data-act="paid" title="Mark as paid">Mark paid</button>`}
@@ -1096,7 +1101,7 @@
     const d = $('#paidDialog'), one = list.length === 1 ? list[0] : null;
     const total = list.reduce((a, i) => a + totals(i).total, 0);
     $('#paidTitle').textContent = one ? `${one.number} · ${one.from.name}` : `Mark ${list.length} invoices paid`;
-    $('#paidText').textContent = `£${money(total)}${one ? '' : ' in total'}. The PDF will show PAID and a zero balance.`;
+    $('#paidText').textContent = `${gbp(total)}${one ? '' : ' in total'}. The PDF will show PAID and a zero balance.`;
     $('#paidOn').value = (one && one.paidDate) || todayISO();
     $('#paidUndo').hidden = !list.some(i => i.paid);
     d.returnValue = ''; d.showModal();
@@ -1131,10 +1136,18 @@
       toast('Copied with dates moved +1 week');
     }
   });
+  // "Back to pasted text" in the form: returns to step 1 with the text this invoice was extracted from
+  function updateBackToPaste() { const b = $('#backToPaste'); if (b) b.hidden = !(cur.src || $('#pasteBox').value.trim()); }
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#backToPaste')) return;
+    if (cur.src && !$('#pasteBox').value.trim()) $('#pasteBox').value = cur.src;
+    setMode('paste'); showStep('details'); $('#pasteBox').focus();
+  });
   function loadForEdit(inv) {
     cur = JSON.parse(JSON.stringify(inv)); editingId = inv.id; numberTouched = true;
     cur.vatAll = cur.vatAll || cur.items[0]?.vat || 'none';
-    fillForm(); onChange(); showTab('create'); setMode('form'); showStep('details');
+    if (cur.src) $('#pasteBox').value = cur.src;
+    fillForm(); onChange(); showTab('create'); setMode('form'); showStep('details'); updateBackToPaste();
   }
   window.IM.loadForEdit = loadForEdit;
   $('#selectAll').addEventListener('change', e => { queueItems().forEach(i => (i.selected = e.target.checked)); save(); renderQueue(); });
@@ -1235,7 +1248,7 @@
         <div class="meta">${esc((s.addr || 'No address').replace(/\n/g, ', '))}</div>
         <div class="bank">${esc(s.accNo || '—')} · ${esc(s.sort || '—')}</div>
         <div class="meta">Rate £${s.rate ? money(s.rate) : '—'} · ${vatLabel(s.vat || 'none')}${(s.aliases || []).length ? ' · aka ' + esc(s.aliases.join(', ')) : ''}</div>
-        <div class="stats"><div><b>${st.count}</b>invoices</div><div><b>${st.days}</b>days</div><div><b>£${money(st.total)}</b>total</div><div class="${st.owed ? 'owed' : ''}"><b>£${money(st.owed)}</b>unpaid</div></div>
+        <div class="stats"><div><b>${st.count}</b>invoices</div><div><b>${st.days}</b>days</div><div><b>${gbp(st.total)}</b>total</div><div class="${st.owed ? 'owed' : ''}"><b>${gbp(st.owed)}</b>unpaid</div></div>
         <div class="row"><button class="btn small" data-sact="edit">Edit</button><button class="btn small primary" data-sact="new">New invoice</button></div>
       </div>`;
     }).join('') || '<p class="muted">No subcontractors yet. Add one, or they are saved automatically when you queue an invoice.</p>';
@@ -1386,7 +1399,7 @@
       b.oninput = e => { const f = e.target.dataset.sf; if (!f) return; db.sites[e.target.closest('.set-row').dataset.i][f] = f === 'code' ? e.target.value.toUpperCase() : f === 'aliases' ? e.target.value.split(',').map(x => x.trim()).filter(Boolean) : e.target.value; save(); fillSelects(); };
       b.onclick = e => { if (e.target.hasAttribute('data-sdel')) { db.sites.splice(e.target.closest('.set-row').dataset.i, 1); save(); renderSettings(); fillSelects(); } };
     } else if (setTab === 'rates') {
-      b.innerHTML = `<p class="hint">Quick-pick day rates.</p><div class="tag-list">${db.rates.map((r, i) => `<span class="tag">£${money(r)}<button class="x" data-rdel="${i}">×</button></span>`).join('')}</div>
+      b.innerHTML = `<p class="hint">Quick-pick day rates.</p><div class="tag-list">${db.rates.map((r, i) => `<span class="tag">${gbp(r)}<button class="x" data-rdel="${i}">×</button></span>`).join('')}</div>
         <div class="row gap" style="margin-top:12px"><input type="number" step="0.01" id="newRate" placeholder="e.g. 180"><button class="btn small" id="addRate">Add rate</button></div>`;
       $('#addRate').onclick = () => { const v = +$('#newRate').value; if (v && !db.rates.includes(v)) { db.rates.push(v); db.rates.sort((a, b) => a - b); save(); renderSettings(); fillSelects(); } };
       b.onclick = e => { const i = e.target.dataset.rdel; if (i != null) { db.rates.splice(+i, 1); save(); renderSettings(); fillSelects(); } };
@@ -1481,7 +1494,7 @@
     const pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
     $('#xpCount').innerHTML = [
       `${pl(db.subs.length, 'subcontractor')} with bank details and rates`,
-      `${pl(db.invoices.length, 'invoice')} (${paid} paid) · £${money(total)}`,
+      `${pl(db.invoices.length, 'invoice')} (${paid} paid) · ${gbp(total)}`,
       `${(db.sites.length === 1 ? '1 property' : db.sites.length + ' properties')} · ${pl(db.clients.length, 'client')} · ${pl(db.rates.length, 'rate')}`,
       'Numbering and VAT settings'
     ].map(x => `<li>${esc(x)}</li>`).join('');

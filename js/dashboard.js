@@ -2,6 +2,7 @@
 window.initDashboard = function () {
   const $ = s => document.querySelector(s);
   const { db, H, P, esc, money, shortDate, weekdayName } = window.IM;
+  const gbp = n => (+n < 0 ? `(£${money(-n)})` : `£${money(n)}`);   // accounting notation: negatives in brackets
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const pad = n => String(n).padStart(2, '0');
   const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -93,8 +94,8 @@ window.initDashboard = function () {
       const d = g.get(w) || { gross: 0, days: 0, subs: new Set(), invs: new Set() };
       const h = max ? d.gross / max * 100 : 0;
       // Label every bar while they fit; with many weeks keep only the tallest and the latest
-      const label = d.gross && (weeks.length <= 16 || d.gross === max || w === last) ? `<em>£${money(d.gross).replace(/\.00$/, '')}</em>` : '';
-      const tip = `w/c ${dm(w)} ${w.slice(0, 4)}\n£${money(d.gross)}\n${+d.days.toFixed(1)} days · ${d.subs.size} subcontractor(s) · ${d.invs.size} invoice(s)`;
+      const label = d.gross && (weeks.length <= 16 || d.gross === max || w === last) ? `<em>${gbp(d.gross).replace(/\.00$/, '')}</em>` : '';
+      const tip = `w/c ${dm(w)} ${w.slice(0, 4)}\n${gbp(d.gross)}\n${+d.days.toFixed(1)} days · ${d.subs.size} subcontractor(s) · ${d.invs.size} invoice(s)`;
       return `<div class="vbar" data-tip="${esc(tip)}">${label}<i style="height:${d.gross ? Math.max(h, 1.5) : 0}%"></i></div>`;
     }).join('');
     let axis = el.nextElementSibling;
@@ -108,11 +109,11 @@ window.initDashboard = function () {
     const g = [...group(rows, key).values()].sort((a, b) => b.gross - a.gross);
     const max = g[0].gross || 1;
     el.innerHTML = g.map(d => {
-      const tip = `${d.key}${nameFn ? ' ' + nameFn(d.key) : ''}\n£${money(d.gross)} (net £${money(d.net)})\n${+d.days.toFixed(1)} days · ${d.invs.size} invoice(s) · ${d.subs.size} subcontractor(s)`;
+      const tip = `${d.key}${nameFn ? ' ' + nameFn(d.key) : ''}\n${gbp(d.gross)} (net ${gbp(d.net)})\n${+d.days.toFixed(1)} days · ${d.invs.size} invoice(s) · ${d.subs.size} subcontractor(s)`;
       return `<div class="hbar" data-tip="${esc(tip)}">
         <div class="nm">${esc(d.key)}${nameFn && nameFn(d.key) ? ` <small>${esc(nameFn(d.key))}</small>` : ''}</div>
         <div class="track"><i style="width:${d.gross / max * 100}%"></i></div>
-        <div class="val">£${money(d.gross)}</div></div>`;
+        <div class="val">${gbp(d.gross)}</div></div>`;
     }).join('');
   }
 
@@ -134,13 +135,13 @@ window.initDashboard = function () {
       const key = iso(d), g = byDay.get(key), inMonth = d.getMonth() === m - 1;
       if (i >= 35 && !inMonth) break;
       const lvl = g && max ? Math.min(4, Math.ceil(g.gross / max * 4)) : 0;
-      const tip = g ? `${weekdayName(key)} ${shortDate(key)}\n£${money(g.gross)}\n${[...g.subs].join(', ')}\nSites: ${[...new Set(g.rows.map(r => r.site))].join(', ')}` : '';
+      const tip = g ? `${weekdayName(key)} ${shortDate(key)}\n${gbp(g.gross)}\n${[...g.subs].join(', ')}\nSites: ${[...new Set(g.rows.map(r => r.site))].join(', ')}` : '';
       html += `<div class="cell${inMonth ? '' : ' out'}${lvl ? ' l' + lvl : ''}${calSel === key ? ' sel' : ''}" data-day="${key}"${tip ? ` data-tip="${esc(tip)}"` : ''}>
-        <span class="d">${d.getDate()}</span>${g ? `<span>${g.subs.size} sub${g.subs.size > 1 ? 's' : ''}</span><span class="t">£${money(g.gross).replace(/\.00$/, '')}</span>` : ''}</div>`;
+        <span class="d">${d.getDate()}</span>${g ? `<span>${g.subs.size} sub${g.subs.size > 1 ? 's' : ''}</span><span class="t">${gbp(g.gross).replace(/\.00$/, '')}</span>` : ''}</div>`;
       if (i % 7 === 6) {
         const mon = iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 5)), w = byWeek.get(mon);   // the Monday of this Sunday-to-Saturday row
-        if (w) html += `<div class="cell weekbar${calSel === 'w' + mon ? ' sel' : ''}" data-day="w${mon}" data-tip="${esc(`Week ${shortDate(mon)} – ${shortDate(P.addDays(mon, 6))}\nNo daily breakdown\n£${money(w.gross)} · ${+w.days.toFixed(1)} days\n${[...w.subs].join(', ')}`)}">
-          <span><b>Whole week ${dm(mon)} – ${dm(P.addDays(mon, 6))}</b> · no daily breakdown</span><span>${w.subs.size} sub${w.subs.size > 1 ? 's' : ''} · ${+w.days.toFixed(1)} days</span><span class="t">£${money(w.gross)}</span></div>`;
+        if (w) html += `<div class="cell weekbar${calSel === 'w' + mon ? ' sel' : ''}" data-day="w${mon}" data-tip="${esc(`Week ${shortDate(mon)} – ${shortDate(P.addDays(mon, 6))}\nNo daily breakdown\n${gbp(w.gross)} · ${+w.days.toFixed(1)} days\n${[...w.subs].join(', ')}`)}">
+          <span><b>Whole week ${dm(mon)} – ${dm(P.addDays(mon, 6))}</b> · no daily breakdown</span><span>${w.subs.size} sub${w.subs.size > 1 ? 's' : ''} · ${+w.days.toFixed(1)} days</span><span class="t">${gbp(w.gross)}</span></div>`;
       }
     }
     $('#calendar').innerHTML = html;
@@ -148,7 +149,7 @@ window.initDashboard = function () {
     const sel = calSel && (isW ? byWeek.get(calSel.slice(1)) : byDay.get(calSel));
     const selTitle = !sel ? '' : isW ? `Week ${shortDate(calSel.slice(1))} – ${shortDate(P.addDays(calSel.slice(1), 6))}` : `${weekdayName(calSel)} ${shortDate(calSel)}`;
     $('#calDay').innerHTML = sel
-      ? `<b>${selTitle}</b> · £${money(sel.gross)}<table class="data" style="margin-top:6px"><tr><th>Subcontractor</th><th>Site</th>${isW ? '<th class="r">Days</th>' : ''}<th>Invoice</th><th class="r">Amount</th></tr>${sel.rows.map(r => `<tr><td>${esc(r.sub)}</td><td>${esc(r.site)}</td>${isW ? `<td class="r">${r.qty}</td>` : ''}<td>${esc(r.inv.number || 'Past record')}</td><td class="r">£${money(r.gross)}</td></tr>`).join('')}</table>`
+      ? `<b>${selTitle}</b> · ${gbp(sel.gross)}<table class="data" style="margin-top:6px"><tr><th>Subcontractor</th><th>Site</th>${isW ? '<th class="r">Days</th>' : ''}<th>Invoice</th><th class="r">Amount</th></tr>${sel.rows.map(r => `<tr><td>${esc(r.sub)}</td><td>${esc(r.site)}</td>${isW ? `<td class="r">${r.qty}</td>` : ''}<td>${esc(r.inv.number || 'Past record')}</td><td class="r">${gbp(r.gross)}</td></tr>`).join('')}</table>`
       : `<div class="cal-legend">Less <i></i><i style="background:#f1eacb"></i><i style="background:#e0d192"></i><i style="background:#C8B21B"></i><i style="background:#7a6c0f"></i> More · click a day for detail</div>`;
   }
 
@@ -157,7 +158,7 @@ window.initDashboard = function () {
     $('#lineCount').textContent = `${rows.length} line(s)`;
     $('#lineTable').innerHTML = `<thead><tr><th>Date</th><th>Subcontractor</th><th>Site</th><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th>VAT</th><th class="r">Total</th><th>Invoice</th><th>Status</th></tr></thead><tbody>` +
       sorted.slice(0, 500).map(r => `<tr><td>${r.isWeek ? `w/c ${shortDate(r.date)}` : shortDate(r.date)}</td><td>${esc(r.sub)}</td><td>${esc(r.site)}</td><td>${esc(H.lineDesc(r.it))}</td>
-        <td class="r">${r.qty}</td><td class="r">${money(r.it.price)}</td><td>${H.vatLabel(r.it.vat)}</td><td class="r">£${money(r.gross)}</td>
+        <td class="r">${r.qty}</td><td class="r">${money(r.it.price)}</td><td>${H.vatLabel(r.it.vat)}</td><td class="r">${gbp(r.gross)}</td>
         <td><a href="#" data-edit="${r.inv.id}">${esc(r.inv.number || 'Past record')}</a></td><td>${r.inv.paid ? '<span class="pill paid">Paid</span>' : '<span class="pill">Unpaid</span>'}</td></tr>`).join('') + '</tbody>';
   }
 
@@ -167,15 +168,15 @@ window.initDashboard = function () {
     const owed = db.invoices.filter(i => !i.paid && (!sub || window.IM.canonSub(i.from.name) === sub)).sort((a, b) => a.date.localeCompare(b.date));
     const today = new Date(iso(new Date()) + 'T00:00:00Z');
     const total = owed.reduce((a, i) => a + H.totals(i).total, 0);
-    $('#payCount').textContent = owed.length ? `${owed.length} invoice(s) · £${money(total)} to pay` : '';
+    $('#payCount').textContent = owed.length ? `${owed.length} invoice(s) · ${gbp(total)} to pay` : '';
     const bySub = {};
     owed.forEach(i => { const n = window.IM.canonSub(i.from.name); bySub[n] = (bySub[n] || 0) + H.totals(i).total; });
-    $('#owedBySub').innerHTML = Object.entries(bySub).sort((a, b) => b[1] - a[1]).map(([n, v]) => `<span class="chip">${esc(n)} <b>£${money(v)}</b></span>`).join('');
+    $('#owedBySub').innerHTML = Object.entries(bySub).sort((a, b) => b[1] - a[1]).map(([n, v]) => `<span class="chip">${esc(n)} <b>${gbp(v)}</b></span>`).join('');
     $('#payTable').innerHTML = owed.length ? `<thead><tr><th>Invoice</th><th>Subcontractor</th><th>Invoice date</th><th class="r">Waiting</th><th class="r">Amount</th><th></th></tr></thead><tbody>` +
       owed.map(i => {
         const wait = Math.max(0, Math.round((today - new Date(i.date + 'T00:00:00Z')) / 864e5));
         return `<tr><td><a href="#" data-edit="${i.id}">${esc(i.number)}</a></td><td>${esc(i.from.name)}</td><td>${shortDate(i.date)}</td>
-          <td class="r${wait > 14 ? ' late' : ''}">${wait} day${wait === 1 ? '' : 's'}</td><td class="r">£${money(H.totals(i).total)}</td>
+          <td class="r${wait > 14 ? ' late' : ''}">${wait} day${wait === 1 ? '' : 's'}</td><td class="r">${gbp(H.totals(i).total)}</td>
           <td class="r"><button class="btn small" data-markpaid="${i.id}">Mark paid</button></td></tr>`;
       }).join('') + '</tbody>'
       : '<tbody><tr><td class="nodata">Everything is paid. New unpaid invoices will appear here.</td></tr></tbody>';
