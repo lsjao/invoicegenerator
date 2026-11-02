@@ -592,3 +592,7 @@ td.wk .sh-note { display: inline; margin-left: 6px; }
 
 .roster-note { font-size: 13px; line-height: 1.55; padding: 10px 12px; margin-bottom: 10px; border-radius: 10px; background: rgba(26, 57, 32, .08); border: 1px solid var(--line); }
 .roster-warn { margin-top: 6px; color: var(--danger); }
+
+.datecheck { margin: 8px 0 10px; padding-left: 0; list-style: none; display: grid; gap: 6px; }
+.datecheck li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.datecheck li > span { flex: 1 1 320px; }

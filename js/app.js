@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v35 · 3 Nov 2026';
+  const APP_VERSION = 'v36 · 3 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -1066,11 +1066,42 @@
   function queueItems() {
     const st = db.settings.qStatus || 'all';
     return db.invoices.filter(i => ($('#showArchived').checked || !i.archived) && (st === 'all' || (st === 'paid') === !!i.paid)).slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')); }
-  // Weeks between today and an invoice's first work date, for catching a wrong year
-  function yearOff(inv) { const ds = inv.items.map(i => i.date || i.week).filter(Boolean).sort(); return ds.length ? Math.round((new Date(ds[0]) - new Date()) / 6048e5) : 0; }
+  // Work dates should sit just before the invoice date. When they don't (a wrong year), whole weeks are added or
+  // taken off, so every weekday stays the same, until the last work day is the latest one on or before the invoice date.
+  const workDates = inv => inv.items.map(i => i.date || i.week).filter(Boolean).sort();
+  const workRange = inv => { const d = workDates(inv); return d.length ? (d.length > 1 && d[0] !== d[d.length - 1] ? `${shortDate(d[0])} to ${shortDate(d[d.length - 1])}` : shortDate(d[0])) : ''; };
+  const dayDiff = (a, b) => Math.round((new Date(a + 'T00:00:00Z') - new Date(b + 'T00:00:00Z')) / 864e5);
+  function dateShift(inv) {
+    if (inv.legacy || !inv.date) return 0;
+    const d = workDates(inv); if (!d.length) return 0;
+    const first = dayDiff(d[0], inv.date), last = dayDiff(d[d.length - 1], inv.date);
+    if (last <= 7 && first >= -84) return 0;   // already plausible
+    return Math.floor((2 - last) / 7);         // largest whole-week shift that keeps the last day within 2 days after the invoice date
+  }
+  function applyShift(inv, k) {
+    const mv = d => (d ? P.addDays(d, 7 * k) : d);
+    inv.items.forEach(it => { it.date = mv(it.date); if (it.week) it.week = mv(it.week); }); inv.weekStart = mv(inv.weekStart);
+  }
+  function renderDateCheck() {
+    const box = $('#dateCheck'); if (!box) return;
+    const bad = db.invoices.map(i => ({ i, k: dateShift(i) })).filter(x => x.k);
+    box.hidden = !bad.length;
+    box.innerHTML = bad.length ? `<b>${bad.length} invoice${bad.length === 1 ? ' has' : 's have'} work dates that do not line up with the invoice date</b> (usually a wrong year).
+      <ul class="datecheck">${bad.map(({ i, k }) => { const d = workDates(i); const to = d.map(x => P.addDays(x, 7 * k)); return `<li data-id="${i.id}"><span><b>${esc(i.number)}</b> ${esc(i.from.name)} · invoice ${shortDate(i.date)} · work ${shortDate(d[0])}${d.length > 1 ? '–' + shortDate(d[d.length - 1]) : ''} → <b>${shortDate(to[0])}${to.length > 1 ? '–' + shortDate(to[to.length - 1]) : ''}</b></span> <button type="button" class="btn small" data-fixdate>Apply</button> <button type="button" class="btn small ghost" data-act="edit">Edit</button></li>`; }).join('')}</ul>
+      <button type="button" class="btn small primary" id="fixAllDates">Apply all ${bad.length}</button>` : '';
+  }
+  document.addEventListener('click', e => {
+    const one = e.target.closest('[data-fixdate]'), all = e.target.closest('#fixAllDates');
+    if (!one && !all) return;
+    const list = one ? [db.invoices.find(i => i.id === one.closest('li').dataset.id)] : db.invoices.filter(i => dateShift(i));
+    list.forEach(i => { const k = dateShift(i); if (k) applyShift(i, k); });
+    saveNow(); renderQueue(); refreshViews(); toast(`${list.length} invoice${list.length === 1 ? '' : 's'} corrected`);
+  });
+  $('#dateCheck').addEventListener('click', e => { const b = e.target.closest('[data-act="edit"]'); if (b) { const inv = db.invoices.find(i => i.id === b.closest('li').dataset.id); if (inv) loadForEdit(inv); } });
   function renderQueue() {
     const items = queueItems();
     $('#queueEmpty').hidden = items.length > 0;
+    renderDateCheck();
     const runs = {}; db.invoices.filter(i => !i.legacy && i.batch).forEach(i => { (runs[i.batch] = runs[i.batch] || []).push(i); });
     const runOrder = Object.keys(runs).sort((a, b) => (runs[a][0].batchAt || '').localeCompare(runs[b][0].batchAt || ''));
     const runPill = inv => { if (inv.legacy || !inv.batch || !runs[inv.batch]) return ''; const g = runs[inv.batch], at = new Date(inv.batchAt || g[0].createdAt); return ` · <span class="pill" title="Created together in one batch">Batch ${runOrder.indexOf(inv.batch) + 1} · ${g.length} invoices${isNaN(at) ? '' : ' · ' + at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>`; };
@@ -1086,7 +1117,7 @@
         <div class="q-act">
           ${inv.paid ? `<button class="pill paid pay-btn" data-act="paid" title="Change paid date or mark unpaid">Paid ${inv.paidDate ? shortDate(inv.paidDate) : ''}</button>`
             : `<button class="btn small pay-btn unpaid" data-act="paid" title="Mark as paid">Mark paid</button>`}
-          ${!inv.legacy && Math.abs(yearOff(inv)) > 26 ? `<button class="btn small danger ghost" data-act="shift" title="Work dates look like the wrong year">Fix year</button>` : ''}
+          ${dateShift(inv) ? `<button class="btn small danger ghost" data-act="shift" title="Work dates do not line up with the invoice date">Fix dates</button>` : ''}
           <button class="btn small ghost" data-act="pdf" title="Download">PDF</button>
           <button class="btn small ghost" data-act="edit">Edit</button>
           <button class="btn small ghost" data-act="dup" title="Copy for next week">Copy</button>
@@ -1152,14 +1183,7 @@
     const inv = db.invoices.find(i => i.id === e.target.closest('li').dataset.id);
     if (act === 'del') { if (await ask(`Delete ${inv.number} for ${inv.from.name}? It will also leave the dashboard.`, 'Delete')) deleteInvoices([inv]); }
     if (act === 'edit') { loadForEdit(inv); }
-    if (act === 'shift') {
-      const w = yearOff(inv), dir = w > 0 ? -364 : 364;
-      if (await ask(`${inv.number}: work dates are ${Math.abs(w)} weeks ${w > 0 ? 'ahead of' : 'before'} today. Move them ${w > 0 ? 'back' : 'forward'} 52 weeks, keeping the same weekdays?`, 'Move dates')) {
-        const mv = d => (d ? P.addDays(d, dir) : d);
-        inv.items.forEach(it => { it.date = mv(it.date); if (it.week) it.week = mv(it.week); }); inv.weekStart = mv(inv.weekStart);
-        saveNow(); renderQueue(); refreshViews(); toast(`${inv.number} dates moved ${w > 0 ? 'back' : 'forward'} 52 weeks`);
-      }
-    }
+    if (act === 'shift') { const k = dateShift(inv); if (k && await ask(`${inv.number}: work dates ${workRange(inv)} do not line up with the invoice date ${shortDate(inv.date)}. Move them ${Math.abs(k)} week${Math.abs(k) === 1 ? '' : 's'} ${k > 0 ? 'later' : 'earlier'}, keeping the weekdays?`, 'Move dates')) { applyShift(inv, k); saveNow(); renderQueue(); toast(`${inv.number} dates moved`); } }
     if (act === 'paid') { await markPaidFlow([inv]); }
     if (act === 'pdf') { await downloadInvoices([inv], 'separate'); }
     if (act === 'dup') {
