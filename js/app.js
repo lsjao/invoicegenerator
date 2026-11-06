@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v37 · 3 Nov 2026';
+  const APP_VERSION = 'v38 · 6 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -1421,9 +1421,22 @@
     if (!data.accName) data.accName = data.name;
     const clash = findSub(data.name);
     if (clash && clash !== editingSub) { toast('A subcontractor with that name exists'); return; }
-    if (editingSub) Object.assign(editingSub, data); else db.subs.push({ id: uid(), ...data });
+    let renamed = 0;
+    if (editingSub) {
+      const oldName = editingSub.name;
+      if (oldName && oldName.toLowerCase() !== data.name.toLowerCase()) {
+        // A rename follows the person everywhere: every invoice and past record under the old name moves to the new one,
+        // and the old spelling is kept as "also known as" so later pastes of it still land on this person.
+        const mine = db.invoices.filter(i => findSub(i.from.name) === editingSub);
+        mine.forEach(i => { if (i.from.accName === i.from.name || !i.from.accName) i.from.accName = data.name; i.from.name = data.name; });
+        renamed = mine.length;
+        if (data.accName === oldName) data.accName = data.name;
+        data.aliases = [...new Set([...data.aliases, oldName])].filter(a => a.toLowerCase() !== data.name.toLowerCase());
+      }
+      Object.assign(editingSub, data);
+    } else db.subs.push({ id: uid(), ...data });
     if (data.rate && !db.rates.includes(data.rate)) { db.rates.push(data.rate); db.rates.sort((a, b) => a - b); }
-    saveNow(); renderSubs(); fillSelects(); toast('Saved');
+    saveNow(); renderSubs(); fillSelects(); refreshViews(); toast(renamed ? `Saved. ${renamed} invoice${renamed === 1 ? '' : 's'} and record${renamed === 1 ? '' : 's'} now use the new name` : 'Saved', renamed ? 5000 : undefined);
   });
   $('#subCancel').addEventListener('click', () => $('#subDialog').close());
   $('#subDelete').addEventListener('click', async () => {
