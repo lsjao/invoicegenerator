@@ -596,3 +596,10 @@ td.wk .sh-note { display: inline; margin-left: 6px; }
 .datecheck { margin: 8px 0 10px; padding-left: 0; list-style: none; display: grid; gap: 6px; }
 .datecheck li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 .datecheck li > span { flex: 1 1 320px; }
+
+.format-guide { margin: 6px 0 10px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: rgba(255, 255, 255, .35); }
+.format-guide summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.format-guide pre { margin: 4px 0 10px; padding: 8px 10px; border-radius: 8px; background: rgba(26, 57, 32, .07); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-x: auto; }
+.format-guide p { margin: 8px 0 0; font-size: 13px; }
+.format-guide ul { margin: 6px 0 2px; padding-left: 18px; font-size: 12.5px; line-height: 1.6; }
+.format-guide code { font-size: 12px; background: rgba(26, 57, 32, .08); padding: 1px 5px; border-radius: 4px; }

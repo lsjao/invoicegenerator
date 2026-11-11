@@ -44,7 +44,36 @@
       </div>
 
       <div class="mode-body" data-modebody="paste">
-        <p class="hint">Paste anything: name, address, bank details, rate, days and site codes. Saved subcontractors fill in automatically.</p>
+        <p class="hint">Saved subcontractors fill in automatically. Use either layout below, or press a sample button to see it filled in.</p>
+        <details class="format-guide">
+          <summary>Standard format</summary>
+          <div class="fg-body">
+            <p><b>By person</b> (one block per subcontractor)</p>
+            <pre>For the week of November 9, 2026:
+
+Full Name
+4 x 12AB (Monday 09/11/26, Tuesday 10/11/26, Thursday 12/11/26, Friday 13/11/26)
+1 x 5CD (Wednesday 11/11/26)
+
+Another Name
+5 x 12AB (Monday 09/11/26, Tuesday 10/11/26, Wednesday 11/11/26, Thursday 12/11/26, Friday 13/11/26)</pre>
+            <p><b>Daily roster</b> (weekday, property code, then first names)</p>
+            <pre>for the week of November 9
+Monday:
+12AB
+Full Name
+Another
+5CD
+Third Person</pre>
+            <ul>
+              <li>One line per property: <code>days x CODE (weekday dd/mm/yy, ...)</code>.</li>
+              <li>The week line sets the Monday. Without a year, the nearest one to today is used.</li>
+              <li>Write <code>Paid</code> or <code>paid in advance</code> next to a day to keep it as a £0 line, for example <code>(Paid Monday 09/11/26)</code>.</li>
+              <li>Short names such as Andrej, Alex or Roma are matched to saved subcontractors, and the match is shown for checking.</li>
+              <li>Rates, addresses and bank details come from the saved subcontractor. Add them in the text only for someone new.</li>
+            </ul>
+          </div>
+        </details>
         <textarea id="pasteBox" rows="11" placeholder="For the week of September 28, 2026:
 
 John Smith
@@ -56,6 +85,8 @@ Anna Kowal
         <div class="row gap">
           <button class="btn primary" id="extractBtn">Extract details</button>
           <button class="btn ghost" id="clearPaste">Clear</button>
+          <button class="btn ghost" id="sampleBy" title="Fill the box with the standard by-person format">Sample: by person</button>
+          <button class="btn ghost" id="sampleRoster" title="Fill the box with the daily roster format">Sample: daily roster</button>
           <span class="muted small">Ctrl + Enter</span>
         </div>
         <div id="extractResult" class="extract-result" hidden></div>

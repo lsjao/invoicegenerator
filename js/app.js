@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v38 · 6 Nov 2026';
+  const APP_VERSION = 'v39 · 11 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -626,6 +626,26 @@
       toast(`${saved.length} invoice(s) queued${replaced ? ` (${replaced} replaced an earlier invoice, same number)` : ''}${batch.length ? ` · ${batch.length} left to fix` : ''}`);
       if (e.target.id === 'batchDownload') await downloadInvoices(saved, db.settings.dlMode);
     }
+  });
+  // Sample text in the standard formats, using this week and your saved names and properties
+  function sampleParts() {
+    const mon = P.mondayOf(todayISO()), at = n => P.addDays(mon, n);
+    const dd = i => { const x = at(i); return x.slice(8) + '/' + x.slice(5, 7) + '/' + x.slice(2, 4); };
+    const D = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const d = new Date(mon + 'T00:00:00Z'), M = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][d.getUTCMonth()];
+    const names = db.subs.slice(0, 2).map(x => x.name); while (names.length < 2) names.push(['John Smith', 'Anna Kowal'][names.length]);
+    const sites = db.sites.filter(x => x.code).slice(0, 2).map(x => x.code); while (sites.length < 2) sites.push(['12AB', '5CD'][sites.length]);
+    return { head: `${M} ${d.getUTCDate()}, ${d.getUTCFullYear()}`, day: i => `${D[i]} ${dd(i)}`, names, sites };
+  }
+  $('#sampleBy').addEventListener('click', () => {
+    const s = sampleParts();
+    $('#pasteBox').value = `For the week of ${s.head}:\n\n${s.names[0]}\n4 x ${s.sites[0]} (${[0, 1, 3, 4].map(s.day).join(', ')})\n1 x ${s.sites[1]} (${s.day(2)})\n\n${s.names[1]}\n5 x ${s.sites[0]} (${[0, 1, 2, 3, 4].map(s.day).join(', ')})`;
+    $('#pasteBox').focus();
+  });
+  $('#sampleRoster').addEventListener('click', () => {
+    const s = sampleParts(), first = n => n.split(' ')[0];
+    $('#pasteBox').value = `for the week of ${s.head.replace(/, \d{4}$/, '')}\nMonday:\n${s.sites[0]}\n${s.names[0]}\n${first(s.names[1])}\n\nTuesday:\n${s.sites[0]}\n${s.names[0]}\n${s.sites[1]}\n${first(s.names[1])}`;
+    $('#pasteBox').focus();
   });
   $('#extractBtn').addEventListener('click', extract);
   $('#pasteBox').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); extract(); } });
