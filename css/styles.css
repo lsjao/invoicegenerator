@@ -604,5 +604,8 @@ td.wk .sh-note { display: inline; margin-left: 6px; }
 .format-guide ul { margin: 6px 0 2px; padding-left: 18px; font-size: 12.5px; line-height: 1.6; }
 .format-guide code { font-size: 12px; background: rgba(26, 57, 32, .08); padding: 1px 5px; border-radius: 4px; }
 
-#pasteBox { min-height: 440px; resize: vertical; }
+#pasteBox { min-height: 220px; max-height: 75vh; resize: vertical; field-sizing: content; }
 .format-guide { margin: 14px 0 4px; }
+
+.dupsub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 13px; }
+.dupsub > span { flex: 1 1 280px; }

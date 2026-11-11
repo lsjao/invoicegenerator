@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v40 · 11 Nov 2026';
+  const APP_VERSION = 'v41 · 11 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -429,6 +429,7 @@
       return toast('That looks like past invoices, so it is in Past invoices. Nothing has been added yet.', 6000);
     }
     batch = []; selBatch = -1;
+    if (segments.length === 1 && matches.some(m => m.how === 'short' || m.how === 'spelling')) text = (header ? header + '\n' : '') + segments[0];   // use the saved full name
     const r = P.parse(text, db);
     applyParse(cur, r);
     cur.src = text; farWarn(cur);
@@ -652,6 +653,9 @@
     $('#pasteBox').value = `for the week of ${s.head.replace(/, \d{4}$/, '')}\nMonday:\n${s.sites[0]}\n${s.names[0]}\n${first(s.names[1])}\n\nTuesday:\n${s.sites[0]}\n${s.names[0]}\n${s.sites[1]}\n${first(s.names[1])}`;
     $('#pasteBox').focus();
   });
+  // The paste box grows with what is pasted (up to 75% of the window), and can still be dragged to any size
+  const growPaste = () => { const b = $('#pasteBox'); if (CSS.supports && CSS.supports('field-sizing', 'content')) return; b.style.height = 'auto'; b.style.height = Math.min(b.scrollHeight + 4, window.innerHeight * 0.75) + 'px'; };
+  $('#pasteBox').addEventListener('input', growPaste);
   $('#extractBtn').addEventListener('click', extract);
   $('#pasteBox').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); extract(); } });
   $('#clearPaste').addEventListener('click', () => { rosterNote = ''; $('#pasteBox').value = ''; $('#extractResult').hidden = true; batch = []; selBatch = -1; renderPreview(); });
@@ -1323,8 +1327,35 @@
     const inv = db.invoices.filter(i => canonSub(i.from.name).toLowerCase() === sub.name.toLowerCase());
     return { count: inv.length, total: inv.reduce((s, i) => s + totals(i).total, 0), owed: inv.filter(i => !i.paid).reduce((s, i) => s + totals(i).total, 0), days: inv.reduce((s, i) => s + i.items.reduce((a, it) => a + (+it.qty || 0), 0), 0) };
   }
+  // The same person saved twice with the words in a different order ("Pisklov Oleksandr" / "Oleksandr Pisklov")
+  const nameSet = n => String(n).toLowerCase().replace(/[^a-z\u0400-\u04ff ]/g, '').split(/\s+/).filter(Boolean).sort().join(' ');
+  function dupGroups() {
+    const g = {}; db.subs.forEach(s => { const k = nameSet(s.name); if (k) (g[k] = g[k] || []).push(s); });
+    return Object.values(g).filter(a => a.length > 1);
+  }
+  const subWeight = s => db.invoices.filter(i => findSub(i.from.name) === s).length * 10 + ['addr', 'accNo', 'sort', 'rate', 'phone', 'email'].filter(k => s[k]).length;
+  function renderDupSubs() {
+    const box = $('#dupSubsBanner'); if (!box) return;
+    const gs = dupGroups(); box.hidden = !gs.length;
+    box.innerHTML = gs.length ? `<b>Saved twice with the words in a different order</b>` + gs.map((a, gi) => `<div class="dupsub" data-g="${gi}"><span>${a.map(s => `<b>${esc(s.name)}</b> (${db.invoices.filter(i => findSub(i.from.name) === s).length} invoices${s.accNo ? ', bank details' : ', no bank details'})`).join(' and ')}. Merge into one and keep the name:</span>${a.map(s => `<button type="button" class="btn small" data-mergename="${esc(s.name)}">${esc(s.name)}</button>`).join('')}</div>`).join('') : '';
+  }
+  $('#dupSubsBanner').addEventListener('click', e => {
+    const b = e.target.closest('[data-mergename]'); if (!b) return;
+    const grp = dupGroups()[+b.closest('[data-g]').dataset.g]; if (!grp) return;
+    const name = b.dataset.mergename;
+    const keep = grp.slice().sort((x, y) => subWeight(y) - subWeight(x))[0], others = grp.filter(s => s !== keep);
+    const names = new Set(grp.flatMap(s => [s.name, ...(s.aliases || [])]).map(n => n.toLowerCase()));
+    let moved = 0;
+    db.invoices.forEach(i => { if (names.has(String(i.from.name).toLowerCase())) { if (i.from.accName === i.from.name || !i.from.accName) i.from.accName = name; if (i.from.name !== name) { i.from.name = name; moved++; } } });
+    others.forEach(o => { ['addr', 'accName', 'accNo', 'sort', 'rate', 'vat', 'phone', 'email', 'notes'].forEach(k => { if (!keep[k] && o[k]) keep[k] = o[k]; }); });
+    keep.aliases = [...new Set([...grp.flatMap(s => [s.name, ...(s.aliases || [])])])].filter(n => n.toLowerCase() !== name.toLowerCase());
+    if (!keep.accName || names.has(String(keep.accName).toLowerCase())) keep.accName = name;   // an account name that was just the person's name follows the rename
+    keep.name = name;
+    db.subs = db.subs.filter(s => !others.includes(s)); window.IM.db.subs = db.subs;
+    saveNow(); renderSubs(); fillSelects(); refreshViews(); toast(`Merged into ${name}${moved ? `, ${moved} invoice${moved === 1 ? '' : 's'} updated` : ''}`, 5000);
+  });
   function renderSubs() {
-    renderUnsaved();
+    renderUnsaved(); renderDupSubs();
     const q = $('#subSearch').value.trim().toLowerCase();
     const list = db.subs.filter(s => !q || JSON.stringify(s).toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
     $('#subList').innerHTML = list.map(s => {
