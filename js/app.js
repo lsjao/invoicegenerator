@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v39 · 11 Nov 2026';
+  const APP_VERSION = 'v40 · 11 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -418,12 +418,10 @@
     if (P.looksLikeRoster(text)) {   // weekday headings with a property code and a list of first names under each
       const ro = P.parseRoster(text, db);
       text = ro.text;
-      const shown = ro.matches.filter(m => m.how !== 'exact');
-      const bad = ro.matches.filter(m => m.how === 'new' || m.how === 'ambiguous');
-      rosterNote = `<div class="roster-note"><b>Read as a daily roster for ${esc(ro.week)}.</b> ${shown.length ? 'Matched names: ' + shown.filter(m => !bad.includes(m)).map(m => `${esc(m.written)} → <b>${esc(m.name)}</b>`).join(', ') + '.' : ''}
-        ${bad.length ? `<div class="roster-warn">Check: ${bad.map(m => m.how === 'ambiguous' ? `“${esc(m.written)}” could be ${m.options.map(esc).join(' or ')}` : `“${esc(m.written)}” is not a saved subcontractor, so it will be added as new`).join('; ')}. Type the full name in the paste box to fix it.</div>` : ''}</div>`;
+      rosterNote = matchNote(ro.matches, `Read as a daily roster for ${ro.week}.`);
     }
-    const { header, segments } = P.splitBatch(text, db);
+    const { header, segments, matches } = P.splitBatch(text, db);
+    if (!rosterNote && matches.some(m => m.how !== 'exact')) rosterNote = matchNote(matches, 'Short names matched to your saved subcontractors.');
     if (segments.length > 1) return extractBatch(header, segments);
 
     if (P.looksLikePast(text)) {   // dated one-line records belong in Past invoices, not new numbered invoices
@@ -480,6 +478,13 @@
     const ds = inv.items.map(i => i.date).filter(Boolean).sort(); if (!ds.length) return;
     const wk = Math.round((new Date(ds[0]) - new Date()) / 6048e5);
     if (Math.abs(wk) > 6) (inv._warn = inv._warn || []).push(`Dates are ${Math.abs(wk)} weeks ${wk > 0 ? 'ahead of' : 'before'} today, check the year`);
+  }
+  // Shows how typed names were matched to saved subcontractors, and flags the ones that could not be
+  function matchNote(matches, lead) {
+    const shown = matches.filter(m => m.how !== 'exact');
+    const bad = matches.filter(m => m.how === 'new' || m.how === 'ambiguous');
+    return `<div class="roster-note"><b>${esc(lead)}</b> ${shown.length ? 'Matched names: ' + shown.filter(m => !bad.includes(m)).map(m => `${esc(m.written)} → <b>${esc(m.name)}</b>`).join(', ') + '.' : ''}
+      ${bad.length ? `<div class="roster-warn">Check: ${bad.map(m => m.how === 'ambiguous' ? `“${esc(m.written)}” could be ${m.options.map(esc).join(' or ')}` : `“${esc(m.written)}” is not a saved subcontractor, so it will be added as new`).join('; ')}. Type the full name in the paste box to fix it.</div>` : ''}</div>`;
   }
   let rosterNote = '';
   function extractBatch(header, segments) {

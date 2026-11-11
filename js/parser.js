@@ -235,11 +235,18 @@
 
     // "4 x 12AB (Monday 28/09/26, Tuesday 29/09/26, ...)": one line per listed day.
     // "4 x 12AB" with no days listed becomes a whole-week line for the stated week.
-    lines.forEach((l, i) => {
+    lines.forEach((l0, i) => {
       if (used.has(i)) return;
+      // "1 x 19MR (skirtings) (Monday 02/11/26)": the last bracket holds the days, earlier ones are notes on the work
+      let l = l0, note = '';
+      const groups = [...l0.matchAll(/\(([^()]*)\)/g)];
+      if (/^\d+(?:\.\d+)?\s*(?:x|×|\*)/i.test(l0) && groups.length > 1) {
+        note = groups.slice(0, -1).map(g => g[1].trim()).filter(Boolean).join(', ');
+        l = l0.replace(/\s*\([^()]*\)(?=\s*\()/g, '');
+      }
       const qm = l.match(/^(\d+(?:\.\d+)?)\s*(?:x|×|\*)\s*([A-Za-z0-9][A-Za-z0-9 .'-]*?)\s*(?:\((.*)\))?\s*$/i);
       if (!qm) return;
-      const qty = +qm[1], site = qm[2].trim();
+      const qty = +qm[1], site = /^\d{1,3}\s[A-Za-z]{1,5}$/.test(qm[2].trim()) ? qm[2].replace(/\s+/g, '').toUpperCase() : qm[2].trim();   // "122 gr" is 122GR
       const parts = (qm[3] || '').split(/[,;]|\band\b|&/i).map(x => x.trim()).filter(Boolean);
       const days = parts.map(p => {
         const d = parseDate(p), dn = p.match(new RegExp('\\b' + DAY + '\\b', 'i'));
@@ -250,8 +257,8 @@
       used.add(i);
       if (days.length) {
         if (days.length !== qty) out.warnings.push(`${site}: says ${qty} day${qty === 1 ? '' : 's'} but lists ${days.length}`);
-        days.forEach(x => entries.push({ day: x.day, date: x.date, site, qty: 1, price: null, label: 'Labour', named: true }));
-      } else entries.push({ wholeWeek: true, day: 0, date: null, site, qty, price: null, label: 'Labour', named: true });
+        days.forEach(x => entries.push({ day: x.day, date: x.date, site, qty: 1, price: null, label: note ? `Labour (${note})` : 'Labour', named: true }));
+      } else entries.push({ wholeWeek: true, day: 0, date: null, site, qty, price: null, label: note ? `Labour (${note})` : 'Labour', named: true });
     });
     lines.forEach((l, i) => {
       if (used.has(i) || !isWork(l) || SKIP_DAY.test(l)) return;
@@ -366,20 +373,33 @@
     return /^[A-Za-z][A-Za-z'.\-]+(?:\s+[A-Za-z][A-Za-z'.\-]+){1,3}$/.test(first) && !NOT_NAME.test(first) &&
       !new RegExp('\\b' + DAY + '\\b', 'i').test(first);
   }
+  const WORK_LINE = /^\d+(?:\.\d+)?\s*[x×]\s*\S/i;
   function splitBatch(text, db) {
-    const header = [], segs = [];
+    const header = [], segs = [], matches = [];
+    const all = text.split(/\r?\n/).map(r => r.trim());
     let cur = null, prevBlank = true;
-    for (const raw of text.split(/\r?\n/)) {
-      const l = raw.trim();
+    for (let i = 0; i < all.length; i++) {
+      const l = all[i];
       if (!l || /^[-=_*#~]{3,}$/.test(l)) { prevBlank = true; continue; }
       const low = l.toLowerCase();
+      // a bare name (a first name is enough) on its own line, with a work line such as "4 x 12AB (...)" straight after it
+      const next = all.slice(i + 1).find(x => x);
+      const bare = !/[\d():]/.test(l) && l.length <= 40 && !!next && WORK_LINE.test(next) && !WEEKDAY_LINE.test(l);
       const starts = /^(?:name|sub(?:contractor)?|worker|operative)\s*[:\-–=]/i.test(l) || /^payee\s*[:\-–=]?\s*\S/i.test(l) ||
         (db.subs || []).some(s => [s.name, ...(s.aliases || [])].some(n => n && low.startsWith(n.toLowerCase()) && !cur?.some(x => x.toLowerCase().startsWith(n.toLowerCase())))) ||
-        (prevBlank && looksLikeName(l));
-      if (starts) { cur = [l]; segs.push(cur); } else if (cur) cur.push(l); else header.push(l);
+        (prevBlank && looksLikeName(l)) || bare;
+      if (starts) {
+        let head = l;
+        if (bare) {   // Alex, Roma, Andrej ... become the saved subcontractor's full name
+          const m = matchPerson(l, db.subs);
+          matches.push({ written: l, ...m });
+          if (m.how === 'short' || m.how === 'spelling') head = m.name;
+        }
+        cur = [head]; segs.push(cur);
+      } else if (cur) cur.push(l); else header.push(l);
       prevBlank = false;
     }
-    return { header: header.join('\n'), segments: segs.map(s => s.join('\n')) };
+    return { header: header.join('\n'), segments: segs.map(x => x.join('\n')), matches };
   }
 
   /*
