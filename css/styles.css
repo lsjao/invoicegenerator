@@ -603,3 +603,6 @@ td.wk .sh-note { display: inline; margin-left: 6px; }
 .format-guide p { margin: 8px 0 0; font-size: 13px; }
 .format-guide ul { margin: 6px 0 2px; padding-left: 18px; font-size: 12.5px; line-height: 1.6; }
 .format-guide code { font-size: 12px; background: rgba(26, 57, 32, .08); padding: 1px 5px; border-radius: 4px; }
+
+#pasteBox { min-height: 440px; resize: vertical; }
+.format-guide { margin: 14px 0 4px; }
