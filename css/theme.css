@@ -217,3 +217,46 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 .lrow { grid-template-columns: 40px minmax(0, 1fr) 40px 92px 78px auto; column-gap: 8px; }
 @media (max-width: 960px) { .layout, .layout.form-mode { grid-template-columns: 1fr; } }
 .lrow > .r { padding-right: 8px; }
+
+/* ===== Theme v3: other tabs ===== */
+/* Tables as ledgers: the default container for lists */
+.ledger-table th, .ledger-table td { padding: 11px 14px; vertical-align: middle; white-space: nowrap; }
+.ledger-table tbody th { text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 600; color: var(--ink); background: var(--surface); text-align: left; white-space: normal; }
+.ledger-table tbody tr { transition: background .12s; }
+.ledger-table tbody tr:hover > * { background: var(--surface-2); }
+.cell-sub { display: block; font-size: 12px; font-weight: 400; color: var(--muted); max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ledger-table .mono { font-variant-numeric: tabular-nums; }
+.ledger-table .r { text-align: right; }
+.nowrap { white-space: nowrap; }
+.subs-table td.r b { font-weight: 650; }
+#subList.table-wrap { border: 1px solid var(--line); border-radius: 10px; max-height: none; overflow-x: auto; }
+.panel #subList.table-wrap { max-height: none; }
+
+/* Queue as a ledger */
+.queue { gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.queue li, .queue li:first-child { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; padding: 11px 16px; transition: background .12s; }
+.queue li:last-child { border-bottom: 0; }
+.queue li:hover { background: var(--surface-2); }
+.queue .q-main b { font-size: 14px; color: var(--ink); }
+.queue .q-main span { font-size: 12.5px; }
+.queue .q-amt { font-size: 14.5px; font-variant-numeric: tabular-nums; min-width: 96px; text-align: right; }
+.queue-bar h2 { margin-bottom: 0; }
+.actions { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; }
+
+/* Dashboard: one figures strip instead of a grid of metric cards */
+.kpis { display: flex; flex-wrap: wrap; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 18px; }
+.kpis .kpi { flex: 1 1 140px; background: none; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; padding: 12px 16px 10px; margin: 0 -1px -1px 0; }
+.kpi small { display: block; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.kpi b { font-size: 19px; font-weight: 650; margin-top: 4px; color: var(--ink); }
+.kpi .kpi-note { display: inline; font-size: 11px; text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 4px; }
+
+/* Properties and settings rows share the ledger look */
+.prop-table .prop-row:hover > * { background: var(--surface-2); }
+.prop-table .prop-row.sel > * { background: var(--accent-tint); }
+.set-row { gap: 10px; }
+.mode-tabs { width: auto; }
+.panel .table-wrap:has(.prop-table), .panel .table-wrap:has(.ts-grid), .panel .table-wrap:has(.ts-totals) { max-height: none; }
+.prop-table tbody th { text-align: left; }
+.pay-btn.unpaid { background: var(--surface); border-color: var(--line-strong); color: var(--ink); box-shadow: none; }
+.pay-btn.unpaid:hover { background: var(--accent-tint); border-color: #CFDDCB; }
+.pill.paid.pay-btn { background: var(--accent-tint); color: var(--accent); border-color: #CFDDCB; }

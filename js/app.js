@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v44 · 12 Nov 2026';
+  const APP_VERSION = 'v45 · 12 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -1380,17 +1380,19 @@
     renderUnsaved(); renderDupSubs();
     const q = $('#subSearch').value.trim().toLowerCase();
     const list = db.subs.filter(s => !q || JSON.stringify(s).toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
-    $('#subList').innerHTML = list.map(s => {
-      const st = subStats(s);
-      return `<div class="sub-card" data-id="${s.id}">
-        <h4>${esc(s.name)}</h4>
-        <div class="meta">${esc((s.addr || 'No address').replace(/\n/g, ', '))}</div>
-        <div class="bank">${esc(s.accNo || '—')} · ${esc(s.sort || '—')}</div>
-        <div class="meta">Rate £${s.rate ? money(s.rate) : '—'} · ${vatLabel(s.vat || 'none')}${(s.aliases || []).length ? ' · aka ' + esc(s.aliases.join(', ')) : ''}</div>
-        <div class="stats"><div><b>${st.count}</b>invoices</div><div><b>${st.days}</b>days</div><div><b>${gbp(st.total)}</b>total</div><div class="${st.owed ? 'owed' : ''}"><b>${gbp(st.owed)}</b>unpaid</div></div>
-        <div class="row"><button class="btn small" data-sact="edit">Edit</button><button class="btn small primary" data-sact="new">New invoice</button></div>
-      </div>`;
-    }).join('') || '<p class="muted">No subcontractors yet. Add one, or they are saved automatically when you queue an invoice.</p>';
+    $('#subList').innerHTML = list.length ? `<table class="data ledger-table subs-table">
+      <thead><tr><th>Subcontractor</th><th>Bank</th><th class="r">Rate</th><th class="r">Invoices</th><th class="r">Days</th><th class="r">Total</th><th class="r">Unpaid</th><th></th></tr></thead>
+      <tbody>${list.map(s => {
+        const st = subStats(s);
+        return `<tr class="sub-row" data-id="${s.id}">
+          <th scope="row"><b>${esc(s.name)}</b><span class="cell-sub">${esc((s.addr || 'No address').replace(/\n/g, ', '))}${(s.aliases || []).length ? ' · also ' + esc(s.aliases.join(', ')) : ''}</span></th>
+          <td class="mono">${s.accNo ? esc(s.accNo) + '<span class="cell-sub">' + esc(s.sort || '') + '</span>' : '<span class="muted">Not saved</span>'}</td>
+          <td class="r">${s.rate ? gbp(s.rate) : '<span class="muted">None</span>'}${s.vat && s.vat !== 'none' ? `<span class="cell-sub">${vatLabel(s.vat)}</span>` : ''}</td>
+          <td class="r">${st.count}</td><td class="r">${st.days}</td><td class="r">${gbp(st.total)}</td>
+          <td class="r${st.owed ? ' owed-txt' : ''}">${st.owed ? '<b>' + gbp(st.owed) + '</b>' : gbp(0)}</td>
+          <td class="r nowrap"><button class="btn small ghost" data-sact="edit">Edit</button><button class="btn small" data-sact="new">New invoice</button></td>
+        </tr>`;
+      }).join('')}</tbody></table>` : '<p class="muted">No subcontractors yet. Add one, or they are saved automatically when you queue an invoice.</p>';
   }
   $('#subSearch').addEventListener('input', renderSubs);
 
@@ -1470,7 +1472,7 @@
   $('#addSub').addEventListener('click', () => openSubDialog(null));
   $('#subList').addEventListener('click', e => {
     const a = e.target.dataset.sact; if (!a) return;
-    const s = db.subs.find(x => x.id === e.target.closest('.sub-card').dataset.id);
+    const s = db.subs.find(x => x.id === e.target.closest('.sub-row').dataset.id);
     if (a === 'edit') openSubDialog(s);
     if (a === 'new') {
       cur = blankInvoice({ weekStart: cur.weekStart, to: cur.to, template: cur.template }); editingId = null; numberTouched = false;
