@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v41 · 11 Nov 2026';
+  const APP_VERSION = 'v42 · 12 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -362,6 +362,21 @@
 
   /* ---------- Paste extraction ---------- */
   // Fill an invoice object from a parse result. Returns the matched saved subcontractor, if any.
+  // A person's details and rate are also found in their most recent invoice, so a saved record that is blank
+  // (or a name written in a different order) never asks for them again.
+  const sameWords = (a, b) => { const k = n => String(n).toLowerCase().replace(/[^a-z\u0400-\u04ff ]/g, '').split(/\s+/).filter(Boolean).sort().join(' '); return k(a) && k(a) === k(b); };
+  function fillFromHistory(inv) {
+    const nm = inv.from.name; if (!nm) return;
+    const past = db.invoices.filter(i => !i.legacy && i.id !== inv.id && sameWords(i.from.name, nm)).sort((x, y) => String(y.date).localeCompare(String(x.date)));
+    if (!past.length) return;
+    const last = past[0];
+    for (const k of ['addr', 'accName', 'accNo', 'sort', 'phone', 'email']) if (!inv.from[k] && last.from[k]) inv.from[k] = last.from[k];
+    if (!+inv.rate) {
+      const prices = last.items.map(i => +i.price).filter(v => v > 0), freq = {}; prices.forEach(v => (freq[v] = (freq[v] || 0) + 1));
+      const top = Object.entries(freq).sort((x, y) => y[1] - x[1])[0];
+      if (top) { inv.rate = +top[0]; inv.items.forEach(it => { if (!+it.price && !isFree(it)) it.price = inv.rate; }); }
+    }
+  }
   function applyParse(inv, r) {
     const sub = findSub(r.from.name);
     if (sub) applySub(sub, inv);
@@ -373,6 +388,7 @@
     if (r.due) inv.due = r.due;
     if (r.weekStart) inv.weekStart = r.weekStart;
     if (r.rate) inv.rate = r.rate;
+    fillFromHistory(inv);
     if (r.site) inv.site = r.site;
     inv._format = r.format;
     inv._warn = r.warnings || [];
