@@ -9,7 +9,7 @@
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const SUN_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // calendars start on Sunday
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const APP_VERSION = 'v43 · 12 Nov 2026';
+  const APP_VERSION = 'v44 · 12 Nov 2026';
   const VAT_OPTIONS = [['none', 'No VAT'], ['20', '20% (Standard)'], ['5', '5% (Reduced)'], ['0', '0% (Zero rated)']];
 
   /* ---------- Storage ---------- */
@@ -532,21 +532,27 @@
     if (!batch.length) { selBatch = -1; renderPreview(); return; }
     const n = batch.filter(i => i._include).length;
     const mode = db.settings.dlMode;
+    const sumTotal = batch.filter(i => i._include).reduce((x, i) => x + totals(i).total, 0);
     box.innerHTML = `${rosterNote}
-      <div class="small muted">Found ${batch.length} subcontractors · one invoice each · click a card to jump to its preview</div>
-      <div class="batch">${batch.map((inv, i) => {
+      <div class="ledger-title"><b>${batch.length} invoice${batch.length === 1 ? '' : 's'}</b><span class="muted">${n} included · ${gbp(sumTotal)}</span></div>
+      <div class="batch ledger">
+        <div class="lrow lhead" aria-hidden="true"><span></span><span>Subcontractor</span><span class="r">Days</span><span class="r">Total</span><span>Check</span><span></span></div>
+        ${batch.map((inv, i) => {
         const t = totals(inv), miss = missingFor(inv), days = inv.items.map(x => x.date).filter(Boolean).sort();
-        return `<div class="batch-item${selBatch === i ? ' sel' : ''}" data-bi="${i}">
+        const issues = miss.length + (inv._ov && inv._ov.length ? 1 : 0), needsDetail = issues || (inv._warn || []).length || (inv._fixes || []).length || inv._format === 'unknown';
+        return `<div class="batch-item lrow${selBatch === i ? ' sel' : ''}${inv._include ? '' : ' off'}" data-bi="${i}">
           <label class="toggle" title="Include"><input type="checkbox" data-binc${inv._include ? ' checked' : ''}${problems(inv).length ? ' disabled' : ''}><span></span></label>
-          <div class="bthumb" data-bthumb="${i}" tabindex="0" aria-label="Preview ${esc(inv.from.name)}">${renderInvoiceHTML(inv)}</div>
-          <div><b>${esc(inv.from.name || 'Unknown')}</b> ${formatPill(inv)}
-            <div class="muted">${inv.items.length} line(s)${days.length ? ` · ${shortDate(days[0])}–${shortDate(days[days.length - 1])}` : ''} · ${gbp(t.total)}${inv.number ? ' · ' + esc(inv.number) : ''}</div>
+          <div class="l-name"><b class="bname">${esc(inv.from.name || 'Unknown')}</b>
+            <span class="l-sub"><button type="button" class="l-no" data-bthumb="${i}" aria-label="Preview ${esc(inv.from.name)}">${esc(inv.number || 'No number')}</button>${days.length ? ` · ${shortDate(days[0])}${days.length > 1 ? '–' + shortDate(days[days.length - 1]) : ''}` : ''}</span></div>
+          <div class="l-num r">${inv.items.length}</div>
+          <div class="l-num r"><b>${gbp(t.total)}</b></div>
+          <div class="l-state">${issues ? `<span class="tag-state bad">${issues} to fix</span>` : (inv._warn || []).length ? `<span class="tag-state warn">Check</span>` : '<span class="tag-state ok">Ready</span>'}</div>
+          <div class="l-act"><button class="btn small ghost" data-bact="edit">Edit</button><button class="x" data-bact="del" title="Remove" aria-label="Remove">×</button></div>
+          ${needsDetail || inv._format === 'unknown' ? `<div class="l-detail">${formatPill(inv)}
             ${paidControl(inv, 'data-bpaid')}
             ${ovBox(inv)}
             <div class="chips">${warnChips(inv)}${fixChips(inv)}${miss.filter(m => m !== 'Rate').map(m => `<span class="chip miss">${m}</span>`).join('')}</div>
-            ${miss.includes('Rate') ? `<label class="inline-rate">Day rate £<input type="number" step="0.01" data-brate placeholder="e.g. 160"></label>` : ''}</div>
-          <button class="btn small ghost" data-bact="edit">Edit</button>
-          <button class="x" data-bact="del" title="Remove">×</button>
+            ${miss.includes('Rate') ? `<label class="inline-rate">Day rate £<input type="number" step="0.01" data-brate placeholder="e.g. 160"></label>` : ''}</div>` : `<div class="l-detail l-quiet">${paidControl(inv, 'data-bpaid')}</div>`}
         </div>`;
       }).join('')}</div>
       <div class="batch-bar">
